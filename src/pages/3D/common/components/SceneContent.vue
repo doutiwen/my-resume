@@ -13,35 +13,37 @@
     </TresMesh>
 
     <!-- 网格辅助线 -->
-    <TresGridHelper :args="[400, 40, 0x444444, 0x888888]" />
+    <!-- <TresGridHelper :args="[400, 40, 0x444444, 0x888888]" /> -->
 
     <!-- 道路 -->
-    <Road v-for="road in roads" :key="road.id" :points="road.points" :features="road.features" />
+    <!-- <Road v-for="road in roads" :key="road.id" :points="road.points" :features="road.features" /> -->
 
     <!-- 特定建筑 -->
     <SpecificBuilding
       v-for="building in specificBuildings"
       :key="building.id"
-      :model-path="building.modelPath"
+      :model-name="building.modelName"
       :position="building.position"
       :scale="building.scale"
       :rotation="building.rotation"
+      :lod-distances="building.lodDistances"
     />
 
-    <!-- 通用建筑 -->
-    <GenericBuilding
+    <!-- 通用建筑（暂时注释） -->
+    <!-- <GenericBuilding
       v-for="building in genericBuildings"
       :key="building.id"
       :position="building.position"
       :scale="building.scale"
-      :features="building.features"
-    />
+      :rotation="building.rotation"
+      :lod-distances="building.lodDistances"
+    /> -->
 
-    <!-- 树木 -->
-    <TreesInstance :model-paths="trees.modelPaths" :instances="trees.instances" />
+    <!-- 树木（暂时注释） -->
+    <!-- <TreesInstance :model-paths="trees.modelPaths" :instances="trees.instances" /> -->
 
-    <!-- 路灯 -->
-    <StreetLight :instances="streetLights.instances" />
+    <!-- 路灯（暂时注释） -->
+    <!-- <StreetLight :model-path="streetLights.modelPath" :instances="streetLights.instances" /> -->
   </TresGroup>
 </template>
 
