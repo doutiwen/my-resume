@@ -18,9 +18,8 @@
     <!-- 道路 -->
     <!-- <Road v-for="road in roads" :key="road.id" :points="road.points" :features="road.features" /> -->
 
-    <!-- 特定建筑 -->
-    <SpecificBuilding
-      v-for="building in specificBuildings"
+    <Building
+      v-for="building in buildings"
       :key="building.id"
       :model-name="building.modelName"
       :position="building.position"
@@ -28,16 +27,6 @@
       :rotation="building.rotation"
       :lod-distances="building.lodDistances"
     />
-
-    <!-- 通用建筑（暂时注释） -->
-    <!-- <GenericBuilding
-      v-for="building in genericBuildings"
-      :key="building.id"
-      :position="building.position"
-      :scale="building.scale"
-      :rotation="building.rotation"
-      :lod-distances="building.lodDistances"
-    /> -->
 
     <!-- 树木（暂时注释） -->
     <!-- <TreesInstance :model-paths="trees.modelPaths" :instances="trees.instances" /> -->
@@ -48,12 +37,10 @@
 </template>
 
 <script setup>
-  import { sceneData } from '../data/sceneData';
-  import SpecificBuilding from './SpecificBuilding.vue';
-  import GenericBuilding from './GenericBuilding.vue';
-  import TreesInstance from './TreesInstance.vue';
-  import StreetLight from './StreetLight.vue';
-  import Road from './Road.vue';
+  import { sceneData } from '../../data/sceneData';
+  import Building from '../Building/index.vue';
+  // import TreesInstance from './TreesInstance.vue';
+  // import Road from './Road.vue';
 
-  const { specificBuildings, genericBuildings, trees, streetLights, roads } = sceneData;
+  const { buildings, roads } = sceneData;
 </script>

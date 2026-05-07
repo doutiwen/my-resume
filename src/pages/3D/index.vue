@@ -6,7 +6,6 @@
           :position="[0, 50, 100]"
           :look-at="[0, 0, 0]"
         ></TresPerspectiveCamera>
-
         <!-- 轨道控制器 -->
         <OrbitControls
           :enable-damping="true"
@@ -15,9 +14,8 @@
           :max-distance="200"
           :max-polar-angle="Math.PI / 2"
         />
-
         <!-- 场景内容 -->
-        <SceneContent />
+        <SceneContent v-log />
       </TresCanvas>
     </div>
     <div class="stats-panel">
@@ -49,9 +47,9 @@
 <script setup name="3D">
   import { ref, onMounted } from 'vue';
   import MenuLayout from '@/layouts/menuLayout.vue';
-  import { TresCanvas } from '@tresjs/core';
+  import { TresCanvas, vLog } from '@tresjs/core';
   import { OrbitControls } from '@tresjs/cientos';
-  import SceneContent from './common/components/SceneContent.vue';
+  import SceneContent from './common/components/SceneContent/index.vue';
 
   const stats = ref({
     vertices: 0,
