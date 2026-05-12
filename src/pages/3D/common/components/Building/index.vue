@@ -24,11 +24,6 @@
     },
     lodDistances: {
       type: Object,
-      default: () => ({
-        high: 50,
-        medium: 150,
-        low: 300,
-      }),
     },
     position: {
       type: Array,
@@ -53,74 +48,106 @@
 
   // 创建初始 LOD 对象（使用中细节模型作为最高级别）
   const createInitialLOD = (mediumModel) => {
-    const lod = new THREE.LOD();
-    const lowPolyBuilding = createLowPolyBuilding({ color: buildingColor });
-    // 初始最高级别使用中细节模型或低多边形建筑
-    const highestLevelModel = mediumModel ? mediumModel.scene.clone() : lowPolyBuilding.clone();
-    lod.addLevel(highestLevelModel, 0);
-    // 中细节级别
-    if (mediumModel) {
-      lod.addLevel(mediumModel.scene.clone(), props.lodDistances.high);
+    if (props.lodDistances) {
+      const lowPolyBuilding = createLowPolyBuilding({ color: buildingColor });
+      const lod = new THREE.LOD();
+      // 初始最高级别使用中细节模型或低多边形建筑
+      const highestLevelModel = mediumModel ? mediumModel.scene.clone() : lowPolyBuilding.clone();
+      lod.addLevel(highestLevelModel, 0);
+      // 中细节级别
+      if (mediumModel) {
+        lod.addLevel(mediumModel.scene.clone(), props.lodDistances.high);
+      } else {
+        lod.addLevel(lowPolyBuilding.clone(), props.lodDistances.high);
+      }
+
+      // 低细节级别
+      lod.addLevel(lowPolyBuilding, props.lodDistances.medium);
+
+      return lod;
     } else {
-      lod.addLevel(lowPolyBuilding.clone(), props.lodDistances.high);
+      return null;
     }
-
-    // 低细节级别
-    lod.addLevel(lowPolyBuilding, props.lodDistances.medium);
-
-    return lod;
   };
 
   // 更新 LOD 对象（替换最高级别为高细节模型）
   const updateLODWithHighModel = (highModel) => {
-    if (lodObject.value && highModel && !hasHighModelLoaded.value) {
-      // 移除原有的最高级别（距离为0的级别）
-      while (lodObject.value.levels.length > 0 && lodObject.value.levels[0].distance === 0) {
-        lodObject.value.remove(lodObject.value.levels[0].object);
-        lodObject.value.levels.shift();
+    if (!props.lodDistances) {
+      // 如果没有设置lodDistances，直接替换为高细节模型
+      if (highModel && !hasHighModelLoaded.value) {
+        lodObject.value = highModel.scene.clone();
+        hasHighModelLoaded.value = true;
       }
-      // 在最前面插入高细节模型
-      lodObject.value.addLevel(highModel.scene.clone(), 0);
-      hasHighModelLoaded.value = true;
+    } else {
+      if (lodObject.value && highModel && !hasHighModelLoaded.value) {
+        // 移除原有的最高级别（距离为0的级别）
+        while (lodObject.value.levels.length > 0 && lodObject.value.levels[0].distance === 0) {
+          lodObject.value.remove(lodObject.value.levels[0].object);
+          lodObject.value.levels.shift();
+        }
+        // 在最前面插入高细节模型
+        lodObject.value.addLevel(highModel.scene.clone(), 0);
+        hasHighModelLoaded.value = true;
+      }
     }
   };
 
   // 加载模型
   const loadModels = async () => {
     try {
-      console.log(114);
-      // 优先加载中细节模型
-      const mediumModel = await useGLTFLoader({
-        modelName: props.modelName,
-        modelType: 'building',
-        level: 'medium',
-      });
+      if (!props.lodDistances) {
+        // 如果没有设置lodDistances，直接加载高细节模型
+        const highModel = await useGLTFLoader({
+          modelName: props.modelName,
+          modelType: 'building',
+          level: 'high',
+        });
 
-      // 中等模型加载完成后，创建初始 LOD
-      if (mediumModel) {
-        lodObject.value = createInitialLOD(mediumModel);
-        isLoading.value = false;
-      }
+        if (highModel) {
+          lodObject.value = highModel.scene.clone();
+          isLoading.value = false;
+        }
+      } else {
+        // 有lodDistances时，按原逻辑加载
+        // 优先加载中细节模型
+        const mediumModel = await useGLTFLoader({
+          modelName: props.modelName,
+          modelType: 'building',
+          level: 'medium',
+        });
 
-      //后台加载高细节模型
-      const highModel = await useGLTFLoader({
-        modelName: props.modelName,
-        modelType: 'building',
-        level: 'high',
-      });
+        // 中等模型加载完成后，创建初始 LOD
+        if (mediumModel) {
+          lodObject.value = createInitialLOD(mediumModel);
+          isLoading.value = false;
+        }
 
-      // 高细节模型加载完成后，更新 LOD
-      if (highModel) {
-        updateLODWithHighModel(highModel);
+        //后台加载高细节模型
+        const highModel = await useGLTFLoader({
+          modelName: props.modelName,
+          modelType: 'building',
+          level: 'high',
+        });
+
+        // 高细节模型加载完成后，更新 LOD
+        if (highModel) {
+          updateLODWithHighModel(highModel);
+        }
       }
     } catch (err) {
       console.error('Failed to load models:', err);
       // 加载失败时，使用低多边形建筑
       const lowPolyBuilding = createLowPolyBuilding({ color: buildingColor });
-      const lod = new THREE.LOD();
-      lod.addLevel(lowPolyBuilding.clone(), 0);
-      lod.addLevel(lowPolyBuilding, props.lodDistances.medium);
-      lodObject.value = lod;
+
+      if (!props.lodDistances) {
+        // 如果没有设置lodDistances，直接使用低多边形建筑
+        lodObject.value = lowPolyBuilding.clone();
+      } else {
+        const lod = new THREE.LOD();
+        lod.addLevel(lowPolyBuilding.clone(), 0);
+        lod.addLevel(lowPolyBuilding, props.lodDistances.medium);
+        lodObject.value = lod;
+      }
       isLoading.value = false;
     }
   };

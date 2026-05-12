@@ -28,8 +28,13 @@
       :lod-distances="building.lodDistances"
     />
 
-    <!-- 树木（暂时注释） -->
-    <!-- <TreesInstance :model-paths="trees.modelPaths" :instances="trees.instances" /> -->
+    <Tree
+      v-for="tree in trees"
+      :key="tree.id"
+      :position="tree.position"
+      :scale="tree.scale"
+      :rotation="tree.rotation"
+    />
 
     <!-- 路灯（暂时注释） -->
     <!-- <StreetLight :model-path="streetLights.modelPath" :instances="streetLights.instances" /> -->
@@ -39,8 +44,8 @@
 <script setup>
   import { sceneData } from '../../data/sceneData';
   import Building from '../Building/index.vue';
-  // import TreesInstance from './TreesInstance.vue';
+  import Tree from '../Tree/index.vue';
   // import Road from './Road.vue';
 
-  const { buildings, roads } = sceneData;
+  const { buildings, trees, roads } = sceneData;
 </script>

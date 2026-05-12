@@ -42,7 +42,8 @@ function getModelPath(modelName, modelType, level) {
     default:
       typePath = 'others';
   }
-  const levelPath = level === 'high' || level === 'medium' ? level : '';
+  const levelPath =
+    modelType === 'building' && (level === 'high' || level === 'medium') ? level : '';
   const pathParts = ['3d_models', typePath, levelPath, `${finalModelName}.glb`].filter(Boolean);
   pathParts.unshift('');
   return pathParts.join('/');
