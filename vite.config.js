@@ -8,7 +8,6 @@ import vueJsx from '@vitejs/plugin-vue-jsx';
 import VueSetupExtend from 'vite-plugin-vue-setup-extend';
 import compressPlugin from 'vite-plugin-compression';
 import Pages from 'vite-plugin-pages';
-import { templateCompilerOptions } from '@tresjs/core';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -25,9 +24,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     plugins: [
-      vue({
-        ...templateCompilerOptions,
-      }),
+      vue(),
       //自动引入ES模块
       AutoImport({
         include: [

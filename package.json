@@ -8,8 +8,6 @@
     "build": "vite build --mode=prod"
   },
   "dependencies": {
-    "@tresjs/cientos": "^5.7.0",
-    "@tresjs/core": "^5.8.0",
     "element-plus": "^2.1.10",
     "pinia": "^3.0.4",
     "three": "^0.184.0",

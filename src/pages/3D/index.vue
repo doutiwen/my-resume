@@ -1,32 +1,38 @@
 <template>
   <MenuLayout>
-    <div class="tres-canvas-wrapper">
-      <TresCanvas clear-color="#87CEEB" :window-size="false" :width="1200" :height="800">
-        <TresPerspectiveCamera
-          :position="[0, 50, 100]"
-          :look-at="[0, 0, 0]"
-        ></TresPerspectiveCamera>
-        <!-- 轨道控制器 -->
-        <OrbitControls
-          :enable-damping="true"
-          :damping-factor="0.05"
-          :min-distance="10"
-          :max-distance="200"
-          :max-polar-angle="Math.PI / 2"
-        />
-        <!-- 场景内容 -->
-        <SceneContent />
-      </TresCanvas>
-    </div>
+    <div ref="canvasContainer" class="tres-canvas-wrapper"></div>
   </MenuLayout>
 </template>
 
 <script setup name="3D">
-  import { ref, onMounted } from 'vue';
+  import { ref, onMounted, onUnmounted } from 'vue';
   import MenuLayout from '@/layouts/menuLayout.vue';
-  import { TresCanvas } from '@tresjs/core';
-  import { OrbitControls } from '@tresjs/cientos';
-  import SceneContent from './common/components/SceneContent/index.vue';
+  import { Scene3D } from './common/classes/Scene3D';
+  import { TownBuilder } from './common/classes/TownBuilder';
+  import { sceneData } from './common/data/sceneData';
+
+  const canvasContainer = ref(null);
+  let scene3D = null;
+  let townBuilder = null;
+
+  onMounted(async () => {
+    if (canvasContainer.value) {
+      scene3D = new Scene3D(canvasContainer.value);
+      townBuilder = new TownBuilder(scene3D.scene, sceneData);
+      await townBuilder.init();
+    }
+  });
+
+  onUnmounted(() => {
+    if (townBuilder) {
+      townBuilder.dispose();
+      townBuilder = null;
+    }
+    if (scene3D) {
+      scene3D.dispose();
+      scene3D = null;
+    }
+  });
 </script>
 
 <style lang="scss" scoped>
@@ -40,9 +46,7 @@
     position: relative;
   }
 
-  :deep(.tres-canvas) {
-    position: relative !important;
-    z-index: 1;
+  .tres-canvas-wrapper canvas {
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   }
