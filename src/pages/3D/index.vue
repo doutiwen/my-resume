@@ -7,30 +7,28 @@
 <script setup name="3D">
   import { ref, onMounted, onUnmounted } from 'vue';
   import MenuLayout from '@/layouts/menuLayout.vue';
-  import { Scene3D } from './common/classes/Scene3D';
-  import { TownBuilder } from './common/classes/TownBuilder';
-  import { sceneData } from './common/data/sceneData';
+  import { Scene3D } from './common/classes/Scene3D.js';
+  import { SceneBuilder } from './common/classes/SceneBuilder.js';
+  import { sceneData } from './common/data/sceneData.js';
 
   const canvasContainer = ref(null);
   let scene3D = null;
-  let townBuilder = null;
+  let sceneBuilder = null;
 
   onMounted(async () => {
     if (canvasContainer.value) {
       scene3D = new Scene3D(canvasContainer.value);
-      townBuilder = new TownBuilder(scene3D.scene, sceneData);
-      await townBuilder.init();
+      sceneBuilder = new SceneBuilder(scene3D.scene, sceneData);
+      await sceneBuilder.init();
     }
   });
 
   onUnmounted(() => {
-    if (townBuilder) {
-      townBuilder.dispose();
-      townBuilder = null;
+    if (sceneBuilder) {
+      sceneBuilder.dispose();
     }
     if (scene3D) {
       scene3D.dispose();
-      scene3D = null;
     }
   });
 </script>

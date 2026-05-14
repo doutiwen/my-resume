@@ -1,6 +1,6 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { getModelPath } from './common';
+import { getModelPath } from './modelPath.js';
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('/draco/');

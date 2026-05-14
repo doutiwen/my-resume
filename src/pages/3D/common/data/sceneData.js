@@ -2,28 +2,42 @@ export const sceneData = {
   buildings: [
     // {
     //   id: 'city-hall',
-    //   type: 'specific-building',
-    //   name: '市政厅',
+    //   type: 'building',
+    //   name: '市政厅1',
     //   modelName: 'building_1',
-    //   position: [0, 0, 0],
-    //   scale: [1, 1, 1],
-    //   rotation: [0, 0, 0],
-    //   lodDistances: {
-    //     high: 50,
-    //     medium: 150,
-    //     low: 300,
-    //   },
-    // },
-  ],
-  trees: [
-    // {
-    //   id: 'trees',
-    //   type: 'tree',
-    //   name: '树',
     //   position: [60, 0, 60],
     //   scale: [1, 1, 1],
     //   rotation: [0, 0, 0],
+    //   // lodDistances: {
+    //   //   high: 50,
+    //   //   medium: 150,
+    //   //   low: 300,
+    //   // },
     // },
+    {
+      id: 'city-hall-2',
+      type: 'building',
+      name: '市政厅',
+      modelName: 'building_2',
+      position: [0, 0, 0],
+      scale: [1, 1, 1],
+      rotation: [0, 0, 0],
+      // lodDistances: {
+      //   high: 50,
+      //   medium: 150,
+      //   low: 300,
+      // },
+    },
+  ],
+  trees: [
+    {
+      id: 'trees',
+      type: 'tree',
+      name: '树',
+      position: [60, 0, 60],
+      scale: [1, 1, 1],
+      rotation: [0, 0, 0],
+    },
   ],
   roads: [
     // 单条闭环椭圆形道路
