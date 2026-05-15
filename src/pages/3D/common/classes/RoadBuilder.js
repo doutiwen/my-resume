@@ -44,14 +44,71 @@ export class RoadBuilder {
       const v3 = ((i + 1) % sampledPoints.length) * 2;
       const v4 = ((i + 1) % sampledPoints.length) * 2 + 1;
 
-      faces.push(v1, v2, v3);
-      faces.push(v2, v4, v3);
+      faces.push(v1, v3, v2);
+      faces.push(v3, v4, v2);
     }
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     geometry.setIndex(faces);
-    geometry.computeVertexNormals();
+
+    return geometry;
+  }
+
+  createCurbGeometry(points, width, offset) {
+    if (points.length < 2) {
+      return new THREE.BufferGeometry();
+    }
+
+    const curvePoints = points.map((p) => new THREE.Vector3(p[0], 0, p[2]));
+    const curve = new THREE.CatmullRomCurve3(curvePoints);
+    curve.closed = true;
+
+    const segments = Math.max(100, points.length * 10);
+
+    const vertices = [];
+    const faces = [];
+    const lineWidth = 0.15;
+    const halfWidth = width / 2;
+
+    const direction = offset > 0 ? 1 : -1;
+
+    for (let i = 0; i < segments; i++) {
+      const t1 = i / segments;
+      const t2 = (i + 1) / segments;
+
+      const point1 = curve.getPointAt(t1);
+      const point2 = curve.getPointAt(t2);
+
+      const tangent1 = curve.getTangentAt(t1);
+      const tangent2 = curve.getTangentAt(t2);
+
+      const normal1 = new THREE.Vector3(-tangent1.z, 0, tangent1.x).normalize();
+      const normal2 = new THREE.Vector3(-tangent2.z, 0, tangent2.x).normalize();
+
+      const innerOffset1 = normal1.clone().multiplyScalar(halfWidth * direction);
+      const outerOffset1 = normal1.clone().multiplyScalar((halfWidth + lineWidth) * direction);
+      const innerOffset2 = normal2.clone().multiplyScalar(halfWidth * direction);
+      const outerOffset2 = normal2.clone().multiplyScalar((halfWidth + lineWidth) * direction);
+
+      const innerPoint1 = point1.clone().add(innerOffset1);
+      const outerPoint1 = point1.clone().add(outerOffset1);
+      const innerPoint2 = point2.clone().add(innerOffset2);
+      const outerPoint2 = point2.clone().add(outerOffset2);
+
+      const baseIndex = vertices.length / 3;
+      vertices.push(innerPoint1.x, 0.02, innerPoint1.z);
+      vertices.push(outerPoint1.x, 0.02, outerPoint1.z);
+      vertices.push(innerPoint2.x, 0.02, innerPoint2.z);
+      vertices.push(outerPoint2.x, 0.02, outerPoint2.z);
+
+      faces.push(baseIndex, baseIndex + 2, baseIndex + 1);
+      faces.push(baseIndex + 1, baseIndex + 2, baseIndex + 3);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(faces);
 
     return geometry;
   }
@@ -62,31 +119,24 @@ export class RoadBuilder {
     const roadGroup = new THREE.Group();
 
     const roadGeometry = this.createRoadGeometry(points, width);
-    const roadMaterial = new THREE.MeshStandardMaterial({
-      color: color,
-      roughness: 0.9,
-      metalness: 0.05,
+    const roadMaterial = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(color),
       side: THREE.DoubleSide,
     });
     const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-    roadMesh.receiveShadow = true;
     roadGroup.add(roadMesh);
 
-    const curbLeftGeometry = this.createRoadGeometry(points, width + 0.6, 0.3);
-    const curbRightGeometry = this.createRoadGeometry(points, width + 0.6, -0.3);
-    const curbMaterial = new THREE.MeshStandardMaterial({
-      color: '#808080',
-      roughness: 0.7,
-      metalness: 0.2,
+    const curbLeftGeometry = this.createCurbGeometry(points, width, 0.2);
+    const curbRightGeometry = this.createCurbGeometry(points, width, -0.2);
+    const curbMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
       side: THREE.DoubleSide,
     });
 
     const curbLeftMesh = new THREE.Mesh(curbLeftGeometry, curbMaterial);
-    curbLeftMesh.receiveShadow = true;
     roadGroup.add(curbLeftMesh);
 
     const curbRightMesh = new THREE.Mesh(curbRightGeometry, curbMaterial);
-    curbRightMesh.receiveShadow = true;
     roadGroup.add(curbRightMesh);
 
     if (hasMarkings) {
@@ -98,114 +148,59 @@ export class RoadBuilder {
   }
 
   addRoadMarkings(roadGroup, points, width) {
-    const markingMaterial = new THREE.MeshStandardMaterial({
-      color: '#FFFFFF',
-      roughness: 0.3,
-      metalness: 0.1,
-      emissive: '#FFFFFF',
-      emissiveIntensity: 0.15,
-      side: THREE.DoubleSide,
-    });
-
-    const edgeLeftGeometry = this.createRoadGeometry(points, width - 0.3, 0.15);
-    const edgeRightGeometry = this.createRoadGeometry(points, width - 0.3, -0.15);
-
-    const edgeLeftMesh = new THREE.Mesh(edgeLeftGeometry, markingMaterial);
-    edgeLeftMesh.receiveShadow = true;
-    roadGroup.add(edgeLeftMesh);
-
-    const edgeRightMesh = new THREE.Mesh(edgeRightGeometry, markingMaterial);
-    edgeRightMesh.receiveShadow = true;
-    roadGroup.add(edgeRightMesh);
-
     const centerLineMarkings = this.createCenterLineMarkings(points);
     centerLineMarkings.forEach((marking) => {
       roadGroup.add(marking);
     });
-
-    if (width >= 10) {
-      const laneMarkings = this.createLaneMarkings(points, width);
-      laneMarkings.forEach((marking) => {
-        roadGroup.add(marking);
-      });
-    }
   }
 
   createCenterLineMarkings(points) {
-    const markings = [];
     const curvePoints = points.map((p) => new THREE.Vector3(p[0], 0, p[2]));
     const curve = new THREE.CatmullRomCurve3(curvePoints);
     curve.closed = true;
 
     const totalLength = curve.getLength();
     const segmentLength = 9;
+    const gapLength = 6;
 
-    for (let i = 0; i < totalLength; i += segmentLength) {
-      const point = curve.getPointAt(i / totalLength);
-      const tangent = curve.getTangentAt(i / totalLength);
-      const angle = Math.atan2(tangent.z, tangent.x);
+    const vertices = [];
+    const faces = [];
 
-      const markingGeometry = new THREE.BoxGeometry(3, 0.03, 0.15);
-      const markingMaterial = new THREE.MeshStandardMaterial({
-        color: '#FFFFFF',
-        roughness: 0.3,
-        metalness: 0.1,
-        emissive: '#FFFFFF',
-        emissiveIntensity: 0.15,
-      });
+    for (let i = 0; i < totalLength; i += segmentLength + gapLength) {
+      const startPoint = curve.getPointAt(i / totalLength);
+      const endPoint = curve.getPointAt((i + segmentLength) / totalLength);
 
-      const marking = new THREE.Mesh(markingGeometry, markingMaterial);
-      marking.position.set(point.x, 0.035, point.z);
-      marking.rotation.set(0, angle, 0);
-      marking.receiveShadow = true;
+      const startTangent = curve.getTangentAt(i / totalLength);
+      const endTangent = curve.getTangentAt((i + segmentLength) / totalLength);
 
-      markings.push(marking);
+      const startNormal = new THREE.Vector3(-startTangent.z, 0, startTangent.x).normalize();
+      const endNormal = new THREE.Vector3(-endTangent.z, 0, endTangent.x).normalize();
+
+      const lineWidth = 0.15;
+      const startLeft = startPoint.clone().add(startNormal.clone().multiplyScalar(lineWidth / 2));
+      const startRight = startPoint.clone().add(startNormal.clone().multiplyScalar(-lineWidth / 2));
+      const endLeft = endPoint.clone().add(endNormal.clone().multiplyScalar(lineWidth / 2));
+      const endRight = endPoint.clone().add(endNormal.clone().multiplyScalar(-lineWidth / 2));
+
+      const baseIndex = vertices.length / 3;
+      vertices.push(startLeft.x, 0.02, startLeft.z);
+      vertices.push(startRight.x, 0.02, startRight.z);
+      vertices.push(endLeft.x, 0.02, endLeft.z);
+      vertices.push(endRight.x, 0.02, endRight.z);
+
+      faces.push(baseIndex, baseIndex + 2, baseIndex + 1);
+      faces.push(baseIndex + 1, baseIndex + 2, baseIndex + 3);
     }
 
-    return markings;
-  }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(faces);
 
-  createLaneMarkings(points, width) {
-    const markings = [];
-    const curvePoints = points.map((p) => new THREE.Vector3(p[0], 0, p[2]));
-    const curve = new THREE.CatmullRomCurve3(curvePoints);
-    curve.closed = true;
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+    });
 
-    const totalLength = curve.getLength();
-    const segmentLength = 8;
-    const laneOffset = width / 4;
-
-    for (let i = 0; i < totalLength; i += segmentLength) {
-      const point = curve.getPointAt(i / totalLength);
-      const tangent = curve.getTangentAt(i / totalLength);
-      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      const angle = Math.atan2(tangent.z, tangent.x);
-
-      const leftOffset = point.clone().add(normal.clone().multiplyScalar(-laneOffset));
-      const rightOffset = point.clone().add(normal.clone().multiplyScalar(laneOffset));
-
-      const markingGeometry = new THREE.BoxGeometry(2.5, 0.025, 0.12);
-      const markingMaterial = new THREE.MeshStandardMaterial({
-        color: '#FFFFFF',
-        roughness: 0.3,
-        metalness: 0.1,
-        emissive: '#FFFFFF',
-        emissiveIntensity: 0.1,
-      });
-
-      const leftMarking = new THREE.Mesh(markingGeometry.clone(), markingMaterial);
-      leftMarking.position.set(leftOffset.x, 0.035, leftOffset.z);
-      leftMarking.rotation.set(0, angle, 0);
-      leftMarking.receiveShadow = true;
-      markings.push(leftMarking);
-
-      const rightMarking = new THREE.Mesh(markingGeometry, markingMaterial);
-      rightMarking.position.set(rightOffset.x, 0.035, rightOffset.z);
-      rightMarking.rotation.set(0, angle, 0);
-      rightMarking.receiveShadow = true;
-      markings.push(rightMarking);
-    }
-
-    return markings;
+    const mesh = new THREE.Mesh(geometry, material);
+    return [mesh];
   }
 }
