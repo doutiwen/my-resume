@@ -1,5 +1,13 @@
 <template>
-  <div ref="containerRef" class="china-map-3d-container"></div>
+  <div class="china-map-3d-wrapper">
+    <div ref="containerRef" class="china-map-3d-container"></div>
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <span class="loading-text">地图加载中...</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -8,10 +16,11 @@
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import Stats from 'three/addons/libs/stats.module.js';
   import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-  import provincesData from './china-provinces.json';
-  import { ProvinceRenderer } from './ProvinceRenderer.js';
+  import provincesData from '../../data/xizang.json';
+  import { ProvinceRenderer, createSharedProjection, projectLonLat } from './ProvinceRenderer.js';
 
   const containerRef = ref(null);
+  const loading = ref(true);
 
   let scene = null;
   let camera = null;
@@ -26,6 +35,42 @@
   let axesHelper = null;
   let gridHelper = null;
   let gradientTexture = null;
+  let sharedProjection = null;
+  let geoWorker = null;
+  let processedData = null;
+
+  const cameraParams = {
+    longitude: 87.0,
+    latitude: 31.0,
+    altitudeKm: 3000,
+  };
+
+  function kmToSceneUnits(km, latitude) {
+    const latRad = (latitude * Math.PI) / 180;
+    const kmPerUnit = 111.32 * Math.cos(latRad);
+    return km / kmPerUnit;
+  }
+
+  function centerMapAtOrigin() {
+    const box = new THREE.Box3();
+    provinceRenderers.forEach((pr) => {
+      pr.provinceGroup.traverse((child) => {
+        if (child.isMesh) {
+          box.expandByObject(child);
+        }
+      });
+    });
+    const center = box.getCenter(new THREE.Vector3());
+    provinceRenderers.forEach((pr) => {
+      pr.provinceGroup.position.sub(center);
+    });
+  }
+
+  function setCameraByGeoPosition(lon, lat, altitudeKm) {
+    const altitudeUnits = kmToSceneUnits(altitudeKm, lat);
+    camera.position.set(0, 0, altitudeUnits);
+    camera.lookAt(0, 0, 0);
+  }
 
   const debugParams = {
     autoRotate: false,
@@ -64,34 +109,102 @@
   }
 
   function createProvinces() {
-    gradientTexture = createGradientTexture('#699dd9', '#416295');
+    return new Promise((resolve) => {
+      gradientTexture = createGradientTexture('#699dd9', '#416295');
 
-    provincesData.features.forEach((feature) => {
-      const renderer = new ProvinceRenderer(feature, gradientTexture, {
-        edgeHeight: 0.15,
-        baseEmissiveIntensity: debugParams.emissiveIntensity,
-        hoveredEmissiveIntensity: debugParams.hoveredEmissiveIntensity,
-        edgeOpacity: debugParams.edgeOpacity,
+      geoWorker = new Worker(new URL('./geoWorker.js', import.meta.url), { type: 'module' });
+
+      geoWorker.onmessage = function (e) {
+        const { type, data } = e.data;
+
+        if (type === 'ready') {
+          geoWorker.postMessage({
+            type: 'processAll',
+            data: {
+              features: provincesData.features,
+              edgeHeight: 0.15,
+              wallThickness: 0.03,
+            },
+          });
+        }
+
+        if (type === 'progress') {
+          loading.value = true;
+        }
+
+        if (type === 'allResults') {
+          processedData = data;
+          createProvinceMeshes().then(() => {
+            resolve();
+          });
+        }
+      };
+
+      geoWorker.postMessage({
+        type: 'init',
+        data: { featureCollection: provincesData, extent: [0, 0, 20, 20] },
       });
+    });
+  }
 
-      renderer.provinceGroup.userData = { name: feature.properties.name };
-      scene.add(renderer.provinceGroup);
-      provinceRenderers.push(renderer);
+  function createProvinceMeshes() {
+    return new Promise((resolve) => {
+      if (!processedData || processedData.length === 0) {
+        resolve();
+        return;
+      }
+
+      let index = 0;
+      const batchSize = 3;
+
+      function createBatch() {
+        const end = Math.min(index + batchSize, processedData.length);
+        for (let i = index; i < end; i++) {
+          const data = processedData[i];
+          const renderer = new ProvinceRenderer(data, gradientTexture, {
+            edgeHeight: 0.15,
+            baseEmissiveIntensity: debugParams.emissiveIntensity,
+            hoveredEmissiveIntensity: debugParams.hoveredEmissiveIntensity,
+            edgeOpacity: debugParams.edgeOpacity,
+          });
+
+          renderer.provinceGroup.userData = { name: data.name };
+          scene.add(renderer.provinceGroup);
+          provinceRenderers.push(renderer);
+        }
+        index = end;
+
+        if (index < processedData.length) {
+          setTimeout(createBatch, 0);
+        } else {
+          resolve();
+        }
+      }
+
+      createBatch();
     });
   }
 
   function onMouseMove(event) {
+    if (!containerRef.value) return;
+
     const rect = containerRef.value.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
 
-    const provinceMeshes = provinceRenderers.map((p) => p.topMesh);
+    const provinceMeshes = provinceRenderers.flatMap((p) => p.topMeshes);
+    if (provinceMeshes.length === 0) return;
+
     const intersects = raycaster.intersectObjects(provinceMeshes);
 
     provinceRenderers.forEach((province) => {
-      const isHovered = intersects.some((intersect) => intersect.object === province.topMesh);
+      const isHovered = intersects.some((intersect) =>
+        province.topMeshes.includes(intersect.object)
+      );
       province.setHovered(isHovered);
     });
   }
@@ -207,6 +320,38 @@
         }
       });
 
+    const cameraFolder = gui.addFolder('Camera Position');
+    cameraFolder
+      .add(cameraParams, 'longitude', 70, 140, 0.1)
+      .name('Longitude')
+      .onChange(() => {
+        setCameraByGeoPosition(
+          cameraParams.longitude,
+          cameraParams.latitude,
+          cameraParams.altitudeKm
+        );
+      });
+    cameraFolder
+      .add(cameraParams, 'latitude', 15, 55, 0.1)
+      .name('Latitude')
+      .onChange(() => {
+        setCameraByGeoPosition(
+          cameraParams.longitude,
+          cameraParams.latitude,
+          cameraParams.altitudeKm
+        );
+      });
+    cameraFolder
+      .add(cameraParams, 'altitudeKm', 10, 5000, 10)
+      .name('Altitude (km)')
+      .onChange(() => {
+        setCameraByGeoPosition(
+          cameraParams.longitude,
+          cameraParams.latitude,
+          cameraParams.altitudeKm
+        );
+      });
+
     gui.close();
   }
 
@@ -219,8 +364,6 @@
     scene.background = null;
 
     camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
-    camera.position.set(0, -3, 5);
-    camera.lookAt(0, 0, 0);
 
     renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -232,56 +375,65 @@
     renderer.shadowMap.type = THREE.VSMShadowMap;
     container.appendChild(renderer.domElement);
 
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.enablePan = false;
-    controls.enableZoom = true;
-    controls.minDistance = 3;
-    controls.maxDistance = 8;
-    controls.minPolarAngle = 0;
-    controls.maxPolarAngle = Math.PI;
-    controls.autoRotate = false;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
+    createProvinces().then(() => {
+      centerMapAtOrigin();
+      setCameraByGeoPosition(
+        cameraParams.longitude,
+        cameraParams.latitude,
+        cameraParams.altitudeKm
+      );
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enablePan = false;
+      controls.enableZoom = true;
+      controls.minDistance = 8;
+      controls.maxDistance = 40;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      controls.autoRotate = false;
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
 
-    const directionalLight = new THREE.DirectionalLight(0x3b82f6, 0.9);
-    directionalLight.position.set(5, 8, 5);
-    directionalLight.castShadow = true;
-    scene.add(directionalLight);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
 
-    const pointLight = new THREE.PointLight(0x06b6d4, 0.6);
-    pointLight.position.set(-5, 6, -5);
-    scene.add(pointLight);
+      const directionalLight = new THREE.DirectionalLight(0x3b82f6, 0.9);
+      directionalLight.position.set(5, 8, 5);
+      directionalLight.castShadow = true;
+      scene.add(directionalLight);
 
-    const spotLight = new THREE.SpotLight(0xffffff, 0.7);
-    spotLight.position.set(0, 12, 0);
-    spotLight.angle = Math.PI / 4;
-    spotLight.penumbra = 0.5;
-    scene.add(spotLight);
+      const pointLight = new THREE.PointLight(0x06b6d4, 0.6);
+      pointLight.position.set(-5, 6, -5);
+      scene.add(pointLight);
 
-    const hemisphereLight = new THREE.HemisphereLight(0x606060, 0x404040, 0.5);
-    scene.add(hemisphereLight);
+      const spotLight = new THREE.SpotLight(0xffffff, 0.7);
+      spotLight.position.set(0, 12, 0);
+      spotLight.angle = Math.PI / 4;
+      spotLight.penumbra = 0.5;
+      scene.add(spotLight);
 
-    axesHelper = new THREE.AxesHelper(3);
-    scene.add(axesHelper);
+      const hemisphereLight = new THREE.HemisphereLight(0x606060, 0x404040, 0.5);
+      scene.add(hemisphereLight);
 
-    gridHelper = new THREE.GridHelper(10, 20, 0x00d4ff, 0x1a3a5c);
-    gridHelper.position.y = -0.05;
-    scene.add(gridHelper);
+      axesHelper = new THREE.AxesHelper(3);
+      scene.add(axesHelper);
 
-    createProvinces();
+      gridHelper = new THREE.GridHelper(10, 20, 0x00d4ff, 0x1a3a5c);
+      gridHelper.position.y = -0.05;
+      scene.add(gridHelper);
 
-    initStats();
-    initGUI();
+      initStats();
+      initGUI();
 
-    raycaster = new THREE.Raycaster();
-    mouse = new THREE.Vector2();
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
 
-    window.addEventListener('resize', onWindowResize);
-    container.addEventListener('mousemove', onMouseMove);
-    animate();
+      window.addEventListener('resize', onWindowResize);
+      container.addEventListener('mousemove', onMouseMove);
+      animate();
+
+      loading.value = false;
+    });
   }
 
   function animate() {
@@ -291,7 +443,8 @@
       stats.update();
     }
 
-    // 更新所有省份的动画状态
+    if (!scene || !renderer || !camera) return;
+
     provinceRenderers.forEach((province) => {
       province.update();
     });
@@ -361,6 +514,12 @@
 
     if (gradientTexture) {
       gradientTexture.dispose();
+      gradientTexture = null;
+    }
+
+    if (geoWorker) {
+      geoWorker.terminate();
+      geoWorker = null;
     }
 
     scene = null;
@@ -373,7 +532,9 @@
   }
 
   onMounted(() => {
-    init();
+    requestAnimationFrame(() => {
+      init();
+    });
   });
 
   onUnmounted(() => {
@@ -382,8 +543,56 @@
 </script>
 
 <style scoped>
+  .china-map-3d-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
   .china-map-3d-container {
     width: 100%;
     height: 100%;
+  }
+
+  .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 10, 20, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 0.3s ease;
+  }
+
+  .loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid rgba(59, 130, 246, 0.3);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .loading-text {
+    color: #3b82f6;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
