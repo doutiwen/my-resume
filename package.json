@@ -8,6 +8,7 @@
     "build": "vite build --mode=prod"
   },
   "dependencies": {
+    "echarts": "^6.0.0",
     "element-plus": "^2.1.10",
     "pinia": "^3.0.4",
     "three": "^0.184.0",
