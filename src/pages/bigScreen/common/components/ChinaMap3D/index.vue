@@ -41,13 +41,11 @@
   import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
   // 省份渲染器，用于创建单个省份的3D模型
-  import { ProvinceRenderer, createSharedProjection } from './ProvinceRenderer.js';
+  import { ProvinceRenderer } from './ProvinceRenderer.js';
 
   // 工具函数集合
   import {
-    loadProvinceData, // 加载省份地理数据
-    kmToSceneUnits, // 公里转换为场景单位
-    createGradientTexture, // 创建渐变纹理
+    createSharedProjection,
     latLngToSceneCoords, // 经纬度转换为场景坐标
     setCameraPositionByLatLng, // 根据经纬度设置相机位置
     setCameraLookAtLatLng, // 设置相机看向目标
@@ -111,20 +109,8 @@
   /** @type {THREE.AxesHelper|null} 坐标轴辅助线（红绿蓝三轴） */
   let axesHelper = null;
 
-  /** @type {THREE.CanvasTexture|null} 省份渐变纹理 */
-  let gradientTexture = null;
-
   /** @type {Function|null} 共享的地图投影函数 */
   let sharedProjection = null;
-
-  /** @type {Worker|null} 地理数据处理的Web Worker */
-  let geoWorker = null;
-
-  /** @type {Array|null} 处理后的省份数据 */
-  let processedData = null;
-
-  /** 相机距离缩放因子对象（用于GUI绑定） */
-  const cameraDistance = { value: 1 };
 
   // =============================================
   // 核心函数
@@ -156,13 +142,33 @@
   // =============================================
 
   /**
+   * 创建单个省份的Three.js网格模型
+   * @param {Object} data - 单个省份的处理结果数据
+   */
+  function createProvinceMesh(data) {
+    if (!data || !data.polygons || data.polygons.length === 0) {
+      return;
+    }
+
+    try {
+      const renderer = new ProvinceRenderer(data);
+      renderer.provinceGroup.userData = { name: data.name };
+      scene.add(renderer.provinceGroup);
+      provinceRenderers.push(renderer);
+    } catch (error) {
+      console.error(`Failed to create renderer for ${data.name}:`, error);
+    }
+  }
+
+  /**
    * 异步创建所有省份的3D模型
    *
    * 数据流程：
-   * 1. 创建渐变纹理（用于省份着色）
-   * 2. 加载省份GeoJSON数据
-   * 3. 创建Web Worker处理地理数据
-   * 4. Worker返回处理结果后，创建Three.js网格
+   * 1. 获取容器尺寸，设置投影范围
+   * 2. 使用fetch加载省份GeoJSON数据
+   * 3. 创建主Worker处理省份数据（主Worker内部管理子Worker）
+   * 4. 流式接收：每个省份处理完成后立即渲染
+   * 5. 所有省份处理完成后完成初始化
    *
    * @returns {Promise} 所有省份创建完成后resolve
    */
@@ -172,142 +178,37 @@
     MAP_EXTENT.width = container.clientWidth;
     MAP_EXTENT.height = container.clientHeight;
 
-    // 创建省份渐变纹理：从浅蓝到深蓝的垂直渐变
-    gradientTexture = createGradientTexture('#699dd9', '#416295');
-
-    // 从服务器加载省份GeoJSON数据
-    const provincesData = await loadProvinceData();
+    // 使用fetch直接加载省份GeoJSON数据
+    const response = await fetch('/maps/processed_xizang.json');
+    const provincesData = await response.json();
 
     // 创建共享的墨卡托投影
     sharedProjection = createSharedProjection(provincesData, MAP_EXTENT);
-    console.log('Shared projection created:', sharedProjection);
-    console.log('MAP_EXTENT:', MAP_EXTENT);
 
-    // 创建Web Worker用于处理地理数据（避免阻塞主线程）
     return new Promise((resolve) => {
-      // 创建Worker，加载geoWorker.js模块
-      geoWorker = new Worker(new URL('./geoWorker.js', import.meta.url), { type: 'module' });
+      // 创建主Worker（内部管理子Worker池）
+      const mainWorker = new Worker(new URL('./geoWorker.js', import.meta.url), { type: 'module' });
 
-      // 处理Worker返回的消息
-      geoWorker.onmessage = function (e) {
+      mainWorker.onmessage = function (e) {
         const { type, data } = e.data;
 
-        // Worker初始化完成，准备开始处理
-        if (type === 'ready') {
-          // 发送所有省份特征数据进行批量处理
-          geoWorker.postMessage({
-            type: 'processAll',
-            data: {
-              features: provincesData.features,
-              edgeHeight: 1, // 省份边框高度
-              wallThickness: 0.08, // 省份围墙厚度（相对比例值，0.01-0.1之间）
-            },
-          });
-        }
-
-        // 处理进度更新
         if (type === 'progress') {
-          loading.value = true;
+          // 流式处理：单个省份处理完成后立即渲染
+          createProvinceMesh(data.result);
         }
 
-        // 所有省份处理完成
-        if (type === 'allResults') {
-          processedData = data;
-          // 创建Three.js网格模型
-          createProvinceMeshes().then(() => {
-            resolve();
-          });
+        if (type === 'complete') {
+          // 所有省份处理完成
+          mainWorker.terminate();
+          resolve();
         }
       };
 
-      // 初始化Worker，传递地理数据集合和投影范围
-      geoWorker.postMessage({
+      // 初始化主Worker，传递地理数据集合、投影范围和墙厚度
+      mainWorker.postMessage({
         type: 'init',
-        data: { featureCollection: provincesData, extent: MAP_EXTENT },
+        data: { featureCollection: provincesData, extent: MAP_EXTENT, wallThickness: 0.1 },
       });
-    });
-  }
-
-  /**
-   * 创建省份的Three.js网格模型
-   *
-   * 实现策略：
-   * - 使用分批创建，每批3个省份
-   * - 使用setTimeout(0)让出主线程，防止UI卡顿
-   *
-   * @returns {Promise} 所有省份网格创建完成后resolve
-   */
-  function createProvinceMeshes() {
-    return new Promise((resolve) => {
-      // 检查是否有处理后的数据
-      if (!processedData || processedData.length === 0) {
-        console.warn('No processed province data available');
-        resolve();
-        return;
-      }
-
-      // 过滤出有效的省份数据（必须有polygons）
-      const validData = processedData.filter((d) => d.polygons && d.polygons.length > 0);
-
-      if (validData.length === 0) {
-        console.warn('No valid province polygons to render');
-        resolve();
-        return;
-      }
-
-      // 当前处理的索引
-      let index = 0;
-      // 每批创建的省份数量
-      const batchSize = 3;
-
-      /**
-       * 分批创建函数
-       * 每次处理batchSize个省份，完成后等待主线程空闲再处理下一批
-       */
-      function createBatch() {
-        // 计算本批次的结束索引
-        const end = Math.min(index + batchSize, validData.length);
-
-        // 创建本批次内每个省份的渲染器
-        for (let i = index; i < end; i++) {
-          const data = validData[i];
-          try {
-            // 创建省份渲染器实例（使用与Worker相同的参数）
-            const renderer = new ProvinceRenderer(data, gradientTexture, {
-              edgeHeight: 1, // 边框高度（需与Worker一致）
-              wallThickness: 0.08, // 围墙厚度（需与Worker一致）
-              baseEmissiveIntensity: debugParams.emissiveIntensity,
-              hoveredEmissiveIntensity: debugParams.hoveredEmissiveIntensity,
-              edgeOpacity: debugParams.edgeOpacity,
-            });
-
-            // 将省份名称存储在userData中，方便调试和交互
-            renderer.provinceGroup.userData = { name: data.name };
-
-            // 将省份组添加到场景
-            scene.add(renderer.provinceGroup);
-
-            // 保存渲染器引用到数组
-            provinceRenderers.push(renderer);
-          } catch (error) {
-            console.error(`Failed to create renderer for ${data.name}:`, error);
-          }
-        }
-
-        // 更新索引
-        index = end;
-
-        // 如果还有未处理的省份，延迟继续
-        if (index < validData.length) {
-          setTimeout(createBatch, 0); // 延迟0毫秒，等待主线程空闲
-        } else {
-          // 所有省份创建完成
-          resolve();
-        }
-      }
-
-      // 开始第一批创建
-      createBatch();
     });
   }
 
@@ -359,62 +260,6 @@
       // 更新悬停状态（ProvinceRenderer内部会处理颜色过渡动画）
       province.setHovered(isHovered);
     });
-  }
-
-  /**
-   * 将地图居中到场景原点
-   *
-   * 通过计算所有省份的包围盒，然后将所有省份向相反方向平移，
-   * 使地图中心点对齐到场景原点(0,0,0)
-   *
-   * 同时也会平移相机和控制器目标点，保持相机相对于地图的位置和朝向不变
-   */
-  function centerMapAtOrigin() {
-    console.log('centerMapAtOrigin 开始执行');
-    console.log('provinceRenderers 数量:', provinceRenderers.length);
-
-    // 创建一个包围盒来容纳所有省份
-    const box = new THREE.Box3();
-
-    // 遍历所有省份的渲染器，扩展包围盒
-    provinceRenderers.forEach((province) => {
-      province.provinceGroup.traverse((child) => {
-        if (child.isMesh) {
-          box.expandByObject(child);
-        }
-      });
-    });
-
-    // 检查包围盒是否有效
-    if (box.isEmpty()) {
-      console.error('包围盒为空！无法居中地图');
-      return;
-    }
-
-    // 获取包围盒的中心点
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-
-    console.log('包围盒中心:', center);
-    console.log('包围盒尺寸:', size);
-
-    // 将所有省份向相反方向平移，使地图居中
-    provinceRenderers.forEach((province) => {
-      province.provinceGroup.position.sub(center);
-    });
-
-    // 同时平移相机，保持相机相对于地图的位置不变
-    camera.position.sub(center);
-
-    // 如果控制器已初始化，同步平移控制器的目标点
-    if (controls) {
-      controls.target.sub(center);
-    }
-
-    // 重新设置相机朝向，确保看向正确的位置
-    camera.lookAt(controls ? controls.target : new THREE.Vector3(0, 0, 0));
-
-    console.log(`地图已居中，偏移量: (${-center.x}, ${-center.y}, ${-center.z})`);
   }
 
   // =============================================
@@ -650,10 +495,6 @@
       controls.target.set(targetCoords.x, 0, targetCoords.z);
       controls.update();
 
-      // 输出调试信息
-      console.log('相机位置:', camera.position);
-      console.log('相机朝向:', camera.getWorldDirection(new THREE.Vector3()));
-
       // 创建环境光：白色，强度0.5
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
       scene.add(ambientLight);
@@ -731,24 +572,33 @@
   // =============================================
 
   /**
-   * 处理窗口大小改变事件
+   * 处理窗口大小改变事件（带防抖）
    *
    * 更新内容：
    * 1. 相机的宽高比
    * 2. 相机的投影矩阵（重新计算投影）
    * 3. 渲染器的尺寸
    */
+  let resizeTimeout = null;
   function onWindowResize() {
-    const container = containerRef.value;
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+    // 清除之前的定时器
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
+    }
 
-    // 更新相机宽高比
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix(); // 通知相机投影矩阵已更新
+    // 防抖延迟执行，避免窗口调整过程中频繁触发
+    resizeTimeout = setTimeout(() => {
+      const container = containerRef.value;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
 
-    // 更新渲染器尺寸
-    renderer.setSize(width, height);
+      // 更新相机宽高比
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+
+      // 更新渲染器尺寸
+      renderer.setSize(width, height);
+    }, 2000); // 2s 延迟
   }
 
   // =============================================
@@ -828,25 +678,12 @@
     provinceRenderers.forEach((r) => r.dispose());
     provinceRenderers = [];
 
-    // 销毁渐变纹理
-    if (gradientTexture) {
-      gradientTexture.dispose();
-      gradientTexture = null;
-    }
-
-    // 终止Web Worker
-    if (geoWorker) {
-      geoWorker.terminate();
-      geoWorker = null;
-    }
-
     // 清空所有核心对象引用
     scene = null;
     camera = null;
     renderer = null;
     controls = null;
     axesHelper = null;
-    gradientTexture = null;
   }
 
   // =============================================
