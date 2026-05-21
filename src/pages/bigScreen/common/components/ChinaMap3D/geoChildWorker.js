@@ -9,13 +9,13 @@
  * 此文件由主Worker通过URL创建，负责实际的地理数据处理逻辑
  */
 
-import { createSharedProjection } from './utils.js';
+import { createProjectionWithScaleTranslate } from './projection.js';
 import * as turf from '@turf/turf';
 
 let projection = null;
 let wallThickness = 0.01;
 
-function projectCoordinates(coordinates, projection) {
+function projectCoordinates(coordinates) {
   const n = coordinates.length;
   const projected = new Float64Array(n);
 
@@ -68,7 +68,7 @@ function bufferPolygon(ringCoords) {
   }
 }
 
-function processPolygon(polygonCoords, projection) {
+function processPolygon(polygonCoords) {
   if (!polygonCoords || polygonCoords.length === 0) return null;
 
   const outerRing = polygonCoords[0];
@@ -78,21 +78,21 @@ function processPolygon(polygonCoords, projection) {
 
   const flatOuterCoords = flattenCoordinates([outerRing]);
   if (flatOuterCoords.length < 6) return null;
-  const projectedOuter = projectCoordinates(flatOuterCoords, projection);
+  const projectedOuter = projectCoordinates(flatOuterCoords);
 
   const outerPoints = [];
   for (let i = 0; i < projectedOuter.length; i += 2) {
-    outerPoints.push({ x: projectedOuter[i], z: projectedOuter[i + 1] });
+    outerPoints.push({ x: projectedOuter[i], y: projectedOuter[i + 1] });
   }
 
   let innerPoints = null;
   if (innerRing) {
     const flatInnerCoords = flattenCoordinates([innerRing]);
     if (flatInnerCoords.length >= 6) {
-      const projectedInner = projectCoordinates(flatInnerCoords, projection);
+      const projectedInner = projectCoordinates(flatInnerCoords);
       innerPoints = [];
       for (let i = 0; i < projectedInner.length; i += 2) {
-        innerPoints.push({ x: projectedInner[i], z: projectedInner[i + 1] });
+        innerPoints.push({ x: projectedInner[i], y: projectedInner[i + 1] });
       }
     }
   }
@@ -103,7 +103,7 @@ function processPolygon(polygonCoords, projection) {
   };
 }
 
-function processFeature(feature, projection) {
+function processFeature(feature) {
   const result = {
     name: feature.properties?.name || 'Unknown',
     polygons: [],
@@ -116,11 +116,11 @@ function processFeature(feature, projection) {
   }
 
   if (geometry.type === 'Polygon') {
-    const polygonData = processPolygon(geometry.coordinates, projection);
+    const polygonData = processPolygon(geometry.coordinates);
     if (polygonData) result.polygons.push(polygonData);
   } else if (geometry.type === 'MultiPolygon') {
     for (const polygon of geometry.coordinates) {
-      const polygonData = processPolygon(polygon, projection);
+      const polygonData = processPolygon(polygon);
       if (polygonData) result.polygons.push(polygonData);
     }
   }
@@ -132,17 +132,33 @@ self.onmessage = function (e) {
   const { type, data } = e.data;
 
   if (type === 'init') {
-    projection = createSharedProjection(data.featureCollection, data.extent);
-    wallThickness = data.wallThickness !== undefined ? data.wallThickness : 0.01;
-    self.postMessage({ type: 'ready' });
+    try {
+      projection = createProjectionWithScaleTranslate(data.scale, data.translate);
+      wallThickness = data.wallThickness !== undefined ? data.wallThickness : 0.01;
+      self.postMessage({ type: 'ready' });
+    } catch (error) {
+      console.error('Child worker initialization error:', error);
+      self.postMessage({
+        type: 'error',
+        data: { featureIndex: -1, error: error.message },
+      });
+    }
   }
 
   if (type === 'process') {
-    const { feature, featureIndex } = data;
-    const result = processFeature(feature, projection);
-    self.postMessage({
-      type: 'result',
-      data: { result, featureIndex },
-    });
+    try {
+      const { feature, featureIndex } = data;
+      const result = processFeature(feature);
+      self.postMessage({
+        type: 'result',
+        data: { result, featureIndex },
+      });
+    } catch (error) {
+      console.error(`Error processing feature ${data.featureIndex}:`, error);
+      self.postMessage({
+        type: 'error',
+        data: { featureIndex: data.featureIndex, error: error.message },
+      });
+    }
   }
 };

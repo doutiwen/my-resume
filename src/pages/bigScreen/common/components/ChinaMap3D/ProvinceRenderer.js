@@ -36,7 +36,7 @@ export class ProvinceRenderer {
    * @param {string} precomputedData.name - 省份名称
    * @param {Array} precomputedData.polygons - 多边形数组
    */
-  constructor(precomputedData, wallHeight = 1) {
+  constructor(precomputedData, wallHeight = 1, baseOffset = 0) {
     this.provinceGroup = new THREE.Group();
     this.topMeshes = [];
     this.isHovered = false;
@@ -45,6 +45,7 @@ export class ProvinceRenderer {
     this.targetAnimationProgress = 0;
     this.animationSpeed = 0.15;
     this.wallHeight = wallHeight;
+    this.baseOffset = baseOffset;
     this.colors = {
       topNormal: new THREE.Color('#4f5fc2'),
       wallTopNormal: new THREE.Color('#ffffff'),
@@ -60,7 +61,7 @@ export class ProvinceRenderer {
     const texture = new THREE.TextureLoader().load(wallSideTextureImage, (loadedTexture) => {
       loadedTexture.wrapS = THREE.RepeatWrapping;
       loadedTexture.wrapT = THREE.ClampToEdgeWrapping;
-      loadedTexture.repeat.set(1, 1);
+      loadedTexture.repeat.set(0.5, 1);
       loadedTexture.needsUpdate = true;
     });
     return texture;
@@ -98,9 +99,10 @@ export class ProvinceRenderer {
 
     if (points && points.length > 0) {
       const firstPoint = points[0];
-      shape.moveTo(firstPoint.x, -firstPoint.z);
+      shape.moveTo(firstPoint.x, firstPoint.y);
       for (let i = 1; i < points.length; i++) {
-        shape.lineTo(points[i].x, -points[i].z);
+        console.log('points', i, points[i]);
+        shape.lineTo(points[i].x, points[i].y);
       }
       shape.closePath();
     }
@@ -114,8 +116,8 @@ export class ProvinceRenderer {
     });
     const mesh = new THREE.Mesh(geo, topMaterial);
     mesh.userData = { name: this.name, hovered: false, isWall: false };
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = this.wallHeight;
+    mesh.position.z = this.wallHeight;
+    mesh.position.y = this.baseOffset;
     this.provinceGroup.add(mesh);
     this.topMeshes.push(mesh);
   }
@@ -125,19 +127,19 @@ export class ProvinceRenderer {
 
     if (outerPoints && outerPoints.length > 0) {
       const firstPoint = outerPoints[0];
-      shape.moveTo(firstPoint.x, -firstPoint.z);
+      shape.moveTo(firstPoint.x, firstPoint.y);
       for (let i = 1; i < outerPoints.length; i++) {
-        shape.lineTo(outerPoints[i].x, -outerPoints[i].z);
+        shape.lineTo(outerPoints[i].x, outerPoints[i].y);
       }
       shape.closePath();
     }
 
     const hole = new THREE.Path();
     const firstInnerPoint = innerPoints[0];
-    hole.moveTo(firstInnerPoint.x, -firstInnerPoint.z);
+    hole.moveTo(firstInnerPoint.x, firstInnerPoint.y);
 
     for (let i = 1; i < innerPoints.length; i++) {
-      hole.lineTo(innerPoints[i].x, -innerPoints[i].z);
+      hole.lineTo(innerPoints[i].x, innerPoints[i].y);
     }
     hole.closePath();
     shape.holes.push(hole);
@@ -158,8 +160,7 @@ export class ProvinceRenderer {
 
     const wallMesh = new THREE.Mesh(wallGeo, [wallTopMaterial, wallSideMaterial]);
     wallMesh.userData = { name: this.name, hovered: false, isWall: true };
-    wallMesh.rotation.x = -Math.PI / 2;
-    wallMesh.position.y = 0;
+    wallMesh.position.y = this.baseOffset;
     this.provinceGroup.add(wallMesh);
     this.topMeshes.push(wallMesh);
   }

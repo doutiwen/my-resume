@@ -26,7 +26,7 @@
    */
 
   // Vue响应式API
-  import { ref, onMounted, onUnmounted } from 'vue';
+  import { ref, onMounted, onUnmounted, shallowRef } from 'vue';
 
   // Three.js核心库
   import * as THREE from 'three';
@@ -40,37 +40,18 @@
   // lil-gui参数控制面板，用于实时调节3D场景参数
   import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-  // 省份渲染器，用于创建单个省份的3D模型
-  import { ProvinceRenderer } from './ProvinceRenderer.js';
-
-  // 工具函数集合
-  import {
-    createSharedProjection,
-    latLngToSceneCoords, // 经纬度转换为场景坐标
-    setCameraPositionByLatLng, // 根据经纬度设置相机位置
-    setCameraLookAtLatLng, // 设置相机看向目标
-  } from './utils.js';
+  // 中国地图类，管理geojson加载和数据分配
+  import { ChinaMap } from './ChinaMap.js';
 
   // =============================================
   // 响应式状态
   // =============================================
 
   /** @type {import('vue').Ref<HTMLElement|null>} 容器DOM引用 */
-  const containerRef = ref(null);
+  const containerRef = shallowRef(null);
 
   /** @type {import('vue').Ref<boolean>} 加载状态标识，true时显示加载遮罩 */
   const loading = ref(true);
-
-  // =============================================
-  // 地图投影配置
-  // =============================================
-
-  /**
-   * 墨卡托投影的地图范围配置
-   * 用于将经纬度坐标映射到平面坐标
-   * { width, height, padding } - 宽度、高度和内边距
-   */
-  const MAP_EXTENT = { width: 0, height: 0, padding: 30 };
 
   // =============================================
   // Three.js核心对象（模块级变量）
@@ -91,8 +72,8 @@
   /** @type {number|null} 动画帧ID，用于取消动画循环 */
   let animationId = null;
 
-  /** @type {ProvinceRenderer[]} 所有省份渲染器实例数组 */
-  let provinceRenderers = [];
+  /** @type {ChinaMap|null} 中国地图实例 */
+  let chinaMap = null;
 
   /** @type {THREE.Raycaster|null} 射线投射器，用于鼠标拾取3D物体 */
   let raycaster = null;
@@ -108,9 +89,6 @@
 
   /** @type {THREE.AxesHelper|null} 坐标轴辅助线（红绿蓝三轴） */
   let axesHelper = null;
-
-  /** @type {Function|null} 共享的地图投影函数 */
-  let sharedProjection = null;
 
   // =============================================
   // 核心函数
@@ -136,81 +114,6 @@
     wireframe: false, // 是否显示线框模式
     showAxes: true, // 是否显示坐标轴
   };
-
-  // =============================================
-  // 省份数据加载与处理
-  // =============================================
-
-  /**
-   * 创建单个省份的Three.js网格模型
-   * @param {Object} data - 单个省份的处理结果数据
-   */
-  function createProvinceMesh(data) {
-    if (!data || !data.polygons || data.polygons.length === 0) {
-      return;
-    }
-
-    try {
-      const renderer = new ProvinceRenderer(data);
-      renderer.provinceGroup.userData = { name: data.name };
-      scene.add(renderer.provinceGroup);
-      provinceRenderers.push(renderer);
-    } catch (error) {
-      console.error(`Failed to create renderer for ${data.name}:`, error);
-    }
-  }
-
-  /**
-   * 异步创建所有省份的3D模型
-   *
-   * 数据流程：
-   * 1. 获取容器尺寸，设置投影范围
-   * 2. 使用fetch加载省份GeoJSON数据
-   * 3. 创建主Worker处理省份数据（主Worker内部管理子Worker）
-   * 4. 流式接收：每个省份处理完成后立即渲染
-   * 5. 所有省份处理完成后完成初始化
-   *
-   * @returns {Promise} 所有省份创建完成后resolve
-   */
-  async function createProvinces() {
-    // 获取容器的实际尺寸，用于设置投影范围
-    const container = containerRef.value;
-    MAP_EXTENT.width = container.clientWidth;
-    MAP_EXTENT.height = container.clientHeight;
-
-    // 使用fetch直接加载省份GeoJSON数据
-    const response = await fetch('/maps/processed_xizang.json');
-    const provincesData = await response.json();
-
-    // 创建共享的墨卡托投影
-    sharedProjection = createSharedProjection(provincesData, MAP_EXTENT);
-
-    return new Promise((resolve) => {
-      // 创建主Worker（内部管理子Worker池）
-      const mainWorker = new Worker(new URL('./geoWorker.js', import.meta.url), { type: 'module' });
-
-      mainWorker.onmessage = function (e) {
-        const { type, data } = e.data;
-
-        if (type === 'progress') {
-          // 流式处理：单个省份处理完成后立即渲染
-          createProvinceMesh(data.result);
-        }
-
-        if (type === 'complete') {
-          // 所有省份处理完成
-          mainWorker.terminate();
-          resolve();
-        }
-      };
-
-      // 初始化主Worker，传递地理数据集合、投影范围和墙厚度
-      mainWorker.postMessage({
-        type: 'init',
-        data: { featureCollection: provincesData, extent: MAP_EXTENT, wallThickness: 0.1 },
-      });
-    });
-  }
 
   // =============================================
   // 鼠标交互处理
@@ -245,14 +148,14 @@
     raycaster.setFromCamera(mouse, camera);
 
     // 获取所有省份的顶部网格
-    const provinceMeshes = provinceRenderers.flatMap((p) => p.topMeshes);
+    const provinceMeshes = chinaMap.getProvinceRenderers().flatMap((p) => p.topMeshes);
     if (provinceMeshes.length === 0) return;
 
     // 检测射线与所有省份网格的交点
     const intersects = raycaster.intersectObjects(provinceMeshes);
 
     // 更新每个省份的悬停状态
-    provinceRenderers.forEach((province) => {
+    chinaMap.getProvinceRenderers().forEach((province) => {
       // 判断当前省份是否在交点列表中
       const isHovered = intersects.some((intersect) =>
         province.topMeshes.includes(intersect.object)
@@ -324,7 +227,7 @@
       .addColor(debugParams, 'provinceColor')
       .name('Province Color')
       .onChange((value) => {
-        provinceRenderers.forEach((province) => {
+        chinaMap.getProvinceRenderers().forEach((province) => {
           province.setColor(value);
         });
       });
@@ -334,7 +237,7 @@
       .add(debugParams, 'emissiveIntensity', 0, 1, 0.05)
       .name('Emissive')
       .onChange((value) => {
-        provinceRenderers.forEach((province) => {
+        chinaMap.getProvinceRenderers().forEach((province) => {
           province.setEmissiveIntensity(value);
         });
       });
@@ -356,7 +259,7 @@
       .add(debugParams, 'showEdges')
       .name('Show Edges')
       .onChange((value) => {
-        provinceRenderers.forEach((province) => {
+        chinaMap.getProvinceRenderers().forEach((province) => {
           province.setEdgesVisible(value);
         });
       });
@@ -367,7 +270,7 @@
       .name('Edge Opacity')
       .onChange((value) => {
         if (!debugParams.showEdges) return;
-        provinceRenderers.forEach((province) => {
+        chinaMap.getProvinceRenderers().forEach((province) => {
           if (!province.topMesh.userData.hovered) {
             province.setEdgesVisible(debugParams.showEdges);
           }
@@ -379,7 +282,7 @@
       .add(debugParams, 'wireframe')
       .name('Wireframe')
       .onChange((value) => {
-        provinceRenderers.forEach((province) => {
+        chinaMap.getProvinceRenderers().forEach((province) => {
           province.setWireframe(value);
         });
       });
@@ -435,15 +338,21 @@
     const container = containerRef.value;
     const width = container.clientWidth;
     const height = container.clientHeight;
-
     // 创建Three.js场景
     scene = new THREE.Scene();
     scene.background = null; // 透明背景
 
-    // 创建透视相机
-    // 参数：视场角55度，宽高比，近截面0.1，远截面1000
-    camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
-
+    // 创建正交相机
+    const frustumSize = height;
+    const aspect = width / height;
+    camera = new THREE.OrthographicCamera(
+      (-frustumSize * aspect) / 2,
+      (frustumSize * aspect) / 2,
+      frustumSize / 2,
+      -frustumSize / 2,
+      0.1,
+      1000
+    );
     // 创建WebGL渲染器
     renderer = new THREE.WebGLRenderer({
       antialias: true, // 开启抗锯齿
@@ -456,52 +365,27 @@
     container.appendChild(renderer.domElement); // 将canvas添加到容器
 
     // 异步创建省份模型，完成后继续初始化
-    createProvinces().then(() => {
+    chinaMap = new ChinaMap();
+    chinaMap.load(scene, '/maps/processed_china1.json', { width, height }).then(() => {
       // 初始化轨道控制器
       controls = new OrbitControls(camera, renderer.domElement);
       controls.enablePan = true; // 禁用平移
       controls.enableZoom = true; // 允许缩放
-      controls.minDistance = 2; // 最小缩放距离
-      controls.maxDistance = 400; // 最大缩放距离
-      controls.minPolarAngle = 0; // 最小极角（垂直旋转上限）
-      controls.maxPolarAngle = Math.PI; // 最大极角（垂直旋转下限）
       controls.autoRotate = false; // 关闭自动旋转
       controls.enableDamping = true; // 开启阻尼效果（惯性）
       controls.dampingFactor = 0.05; // 阻尼系数
 
-      // 设置相机位置在西藏自治区中心上空
-      // 西藏自治区地理中心：纬度约31°N，经度约88°E
-      const xizangCenter = { lng: 88, lat: 31 };
-      const cameraHeightKm = 500; // 降低高度，让相机更靠近地图
-
-      // 设置相机位置
-      setCameraPositionByLatLng(
-        camera,
-        xizangCenter.lng,
-        xizangCenter.lat,
-        cameraHeightKm,
-        sharedProjection
-      );
-
-      // 设置相机朝向指向西藏中心
-      setCameraLookAtLatLng(camera, xizangCenter.lng, xizangCenter.lat, sharedProjection);
-
-      // 同步更新OrbitControls的目标点
-      const targetCoords = latLngToSceneCoords(
-        xizangCenter.lng,
-        xizangCenter.lat,
-        sharedProjection
-      );
-      controls.target.set(targetCoords.x, 0, targetCoords.z);
-      controls.update();
+      // 设置相机位置（地图在XY平面，相机从Z轴上方观察）
+      camera.position.set(0, 0, 50);
+      camera.lookAt(0, 0, 0);
 
       // 创建环境光：白色，强度0.5
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
       scene.add(ambientLight);
 
       // 创建坐标轴辅助线（红色=x轴，绿色=y轴，蓝色=z轴），放在西藏中心位置
-      axesHelper = new THREE.AxesHelper(30); // 增大尺寸到30
-      axesHelper.position.set(targetCoords.x, 0, targetCoords.z); // 移到西藏中心
+      axesHelper = new THREE.AxesHelper(50); // 增大尺寸到30
+      axesHelper.position.set(0, 0, 0);
       scene.add(axesHelper);
 
       // 创建网格辅助线
@@ -554,7 +438,7 @@
     if (!scene || !renderer || !camera) return;
 
     // 更新所有省份渲染器（处理动画）
-    provinceRenderers.forEach((province) => {
+    chinaMap.getProvinceRenderers().forEach((province) => {
       province.update();
     });
 
@@ -592,8 +476,12 @@
       const width = container.clientWidth;
       const height = container.clientHeight;
 
-      // 更新相机宽高比
-      camera.aspect = width / height;
+      const frustumSize = height;
+      const aspect = width / height;
+      camera.left = (-frustumSize * aspect) / 2;
+      camera.right = (frustumSize * aspect) / 2;
+      camera.top = frustumSize / 2;
+      camera.bottom = -frustumSize / 2;
       camera.updateProjectionMatrix();
 
       // 更新渲染器尺寸
@@ -675,8 +563,10 @@
     }
 
     // 销毁所有省份渲染器
-    provinceRenderers.forEach((r) => r.dispose());
-    provinceRenderers = [];
+    if (chinaMap) {
+      chinaMap.dispose();
+      chinaMap = null;
+    }
 
     // 清空所有核心对象引用
     scene = null;
