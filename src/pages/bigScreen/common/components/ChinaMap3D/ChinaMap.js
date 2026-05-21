@@ -12,9 +12,7 @@ export class ChinaMap {
     const response = await fetch(geoJsonUrl);
     const provincesData = await response.json();
 
-    const { scale, translate } = createProjection(provincesData, extent);
     this.extent = extent;
-    const baseOffset = extent.height / 2;
 
     return new Promise((resolve) => {
       this.worker = new Worker(new URL('./geoWorker.js', import.meta.url), {
@@ -25,7 +23,7 @@ export class ChinaMap {
         const { type, data } = e.data;
 
         if (type === 'progress') {
-          this.createProvinceMesh(scene, data.result, wallHeight, baseOffset);
+          this.createProvinceMesh(scene, data.result, wallHeight);
         }
 
         if (type === 'complete') {
@@ -37,18 +35,18 @@ export class ChinaMap {
 
       this.worker.postMessage({
         type: 'init',
-        data: { featureCollection: provincesData, extent, wallThickness, scale, translate },
+        data: { featureCollection: provincesData, extent, wallThickness },
       });
     });
   }
 
-  createProvinceMesh(scene, data, wallHeight, baseOffset) {
+  createProvinceMesh(scene, data, wallHeight) {
     if (!data || !data.polygons || data.polygons.length === 0) {
       return;
     }
 
     try {
-      const renderer = new ProvinceRenderer(data, wallHeight, baseOffset);
+      const renderer = new ProvinceRenderer(data, wallHeight);
       renderer.provinceGroup.userData = { name: data.name };
       scene.add(renderer.provinceGroup);
       this.provinceRenderers.push(renderer);

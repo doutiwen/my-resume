@@ -27,6 +27,8 @@
  * - 记录每个省份的处理状态，便于追踪和调试
  */
 
+import { createProjection } from './projection.js';
+
 const MAX_CHILD_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 6);
 
 let featureCollection = null;
@@ -178,8 +180,11 @@ self.onmessage = function (e) {
     featureCollection = data.featureCollection;
     extent = data.extent;
     wallThickness = data.wallThickness !== undefined ? data.wallThickness : 0.01;
-    scale = data.scale;
-    translate = data.translate;
+
+    const projectionResult = createProjection(featureCollection, extent);
+    scale = projectionResult.scale;
+    translate = projectionResult.translate;
+
     initChildWorkers();
   }
 };

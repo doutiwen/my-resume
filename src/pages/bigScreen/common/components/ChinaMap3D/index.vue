@@ -2,7 +2,7 @@
   <!-- 3D中国地图容器 -->
   <div class="china-map-3d-wrapper">
     <!-- Three.js渲染容器，通过ref引用 -->
-    <div ref="containerRef" class="china-map-3d-container"></div>
+    <div ref="containerRef" class="china-map-3d-container" @mousemove="onMouseMove"></div>
     <!-- 加载遮罩层，数据加载期间显示 -->
     <div v-if="loading" class="loading-overlay">
       <div class="loading-content">
@@ -14,335 +14,63 @@
 </template>
 
 <script setup>
-  /**
-   * ChinaMap3D 组件 - 3D中国地图可视化组件
-   *
-   * 功能说明：
-   * - 使用Three.js渲染3D中国省份地图
-   * - 支持鼠标交互（hover高亮、省份选中）
-   * - 使用Web Worker处理地理数据，避免主线程阻塞
-   * - 提供调试面板（Stats性能监控、GUI参数控制）
-   * - 支持鼠标缩放、旋转等交互操作
-   */
-
-  // Vue响应式API
   import { ref, onMounted, onUnmounted, shallowRef } from 'vue';
-
-  // Three.js核心库
   import * as THREE from 'three';
-
-  // Three.js轨道控制器，支持鼠标交互操作（缩放、旋转、平移）
-  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-  // Three.js性能监控插件，显示FPS等性能指标
-  import Stats from 'three/addons/libs/stats.module.js';
-
-  // lil-gui参数控制面板，用于实时调节3D场景参数
-  import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-
-  // 中国地图类，管理geojson加载和数据分配
   import { ChinaMap } from './ChinaMap.js';
+  import { createDebugTools, disposeDebugTools } from './DebugTools.js';
 
-  // =============================================
-  // 响应式状态
-  // =============================================
+  const props = defineProps({
+    mapUrl: {
+      type: String,
+      default: '/maps/processed_china1.json',
+    },
+  });
 
-  /** @type {import('vue').Ref<HTMLElement|null>} 容器DOM引用 */
   const containerRef = shallowRef(null);
-
-  /** @type {import('vue').Ref<boolean>} 加载状态标识，true时显示加载遮罩 */
   const loading = ref(true);
 
-  // =============================================
-  // Three.js核心对象（模块级变量）
-  // =============================================
-
-  /** @type {THREE.Scene|null} Three.js场景对象，包含所有3D对象 */
   let scene = null;
-
-  /** @type {THREE.PerspectiveCamera|null} 透视相机，用于3D渲染 */
   let camera = null;
-
-  /** @type {THREE.WebGLRenderer|null} WebGL渲染器，负责将场景渲染到canvas */
   let renderer = null;
-
-  /** @type {OrbitControls|null} 轨道控制器，管理相机交互 */
-  let controls = null;
-
-  /** @type {number|null} 动画帧ID，用于取消动画循环 */
   let animationId = null;
-
-  /** @type {ChinaMap|null} 中国地图实例 */
   let chinaMap = null;
-
-  /** @type {THREE.Raycaster|null} 射线投射器，用于鼠标拾取3D物体 */
   let raycaster = null;
-
-  /** @type {THREE.Vector2|null} 标准化鼠标坐标 */
   let mouse = null;
+  let debugTools = null;
+  const DEBUG_MODE = false;
 
-  /** @type {Stats|null} 性能统计面板 */
-  let stats = null;
-
-  /** @type {GUI|null} 参数控制面板 */
-  let gui = null;
-
-  /** @type {THREE.AxesHelper|null} 坐标轴辅助线（红绿蓝三轴） */
-  let axesHelper = null;
-
-  // =============================================
-  // 核心函数
-  // =============================================
-
-  // =============================================
-  // 调试参数配置
-  // =============================================
-
-  /**
-   * GUI调试面板参数对象
-   * 这些参数可以通过lil-gui界面实时调节
-   */
-  const debugParams = {
-    autoRotate: false, // 是否自动旋转地图
-    rotateSpeed: 1.0, // 旋转速度
-    showEdges: true, // 是否显示省份边框
-    edgeOpacity: 0.8, // 边框透明度
-    provinceColor: '#1e5a8a', // 省份颜色
-    emissiveIntensity: 0.25, // 发光强度（仅对MeshStandardMaterial有效）
-    hoveredEmissiveIntensity: 0.4, // 悬停时的发光强度
-    lightIntensity: 0.9, // 光照强度
-    wireframe: false, // 是否显示线框模式
-    showAxes: true, // 是否显示坐标轴
-  };
-
-  // =============================================
-  // 鼠标交互处理
-  // =============================================
-
-  /**
-   * 鼠标移动事件处理函数
-   *
-   * 实现功能：
-   * 1. 将鼠标坐标转换为标准化设备坐标（NDC）
-   * 2. 从相机发出射线检测与省份的交点
-   * 3. 更新悬停省份的高亮状态
-   *
-   * @param {MouseEvent} event 鼠标事件对象
-   */
   function onMouseMove(event) {
-    // 确保容器存在
     if (!containerRef.value) return;
-
-    // 获取容器的边界矩形
     const rect = containerRef.value.getBoundingClientRect();
-
-    // 确保容器有有效尺寸
     if (rect.width === 0 || rect.height === 0) return;
 
-    // 将鼠标坐标转换为标准化设备坐标（NDC）
-    // NDC坐标范围：x从-1到1，y从-1到1
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-    // 从相机位置沿鼠标方向发射射线
     raycaster.setFromCamera(mouse, camera);
 
-    // 获取所有省份的顶部网格
     const provinceMeshes = chinaMap.getProvinceRenderers().flatMap((p) => p.topMeshes);
     if (provinceMeshes.length === 0) return;
 
-    // 检测射线与所有省份网格的交点
     const intersects = raycaster.intersectObjects(provinceMeshes);
 
-    // 更新每个省份的悬停状态
     chinaMap.getProvinceRenderers().forEach((province) => {
-      // 判断当前省份是否在交点列表中
       const isHovered = intersects.some((intersect) =>
         province.topMeshes.includes(intersect.object)
       );
-      // 更新悬停状态（ProvinceRenderer内部会处理颜色过渡动画）
       province.setHovered(isHovered);
     });
   }
 
-  // =============================================
-  // 调试工具初始化
-  // =============================================
-
-  /**
-   * 初始化性能统计面板
-   *
-   * Stats面板显示：
-   * - FPS：每秒帧数
-   * - MS：每帧耗时
-   * - MB：内存占用（需要Chrome开启memory监控）
-   */
-  function initStats() {
-    stats = new Stats();
-    stats.showPanel(0); // 0=FPS, 1=MS, 2=MB
-    stats.dom.style.position = 'absolute';
-    stats.dom.style.top = '0px';
-    stats.dom.style.left = '0px';
-    // 将stats面板添加到3D容器中
-    containerRef.value.appendChild(stats.dom);
-  }
-
-  /**
-   * 初始化GUI参数控制面板
-   *
-   * 控制面板包含以下分组：
-   * - Controls：交互控制（自动旋转、旋转速度）
-   * - Appearance：外观控制（颜色、发光、边框、线框等）
-   * - Lights：光照控制（光照强度）
-   * - Helpers：辅助工具（坐标轴、网格显示）
-   * - Camera：相机控制（缩放距离）
-   */
-  function initGUI() {
-    gui = new GUI({ title: 'Three.js Dev Tools' });
-
-    // ========== 交互控制分组 ==========
-    const controlsFolder = gui.addFolder('Controls');
-
-    // 自动旋转开关
-    controlsFolder
-      .add(debugParams, 'autoRotate')
-      .name('Auto Rotate')
-      .onChange((value) => {
-        controls.autoRotate = value;
-      });
-
-    // 旋转速度滑块
-    controlsFolder
-      .add(debugParams, 'rotateSpeed', 0.1, 3.0, 0.1)
-      .name('Rotate Speed')
-      .onChange(() => {
-        controls.autoRotateSpeed = debugParams.rotateSpeed;
-      });
-
-    // ========== 外观控制分组 ==========
-    const appearanceFolder = gui.addFolder('Appearance');
-
-    // 省份颜色选择器
-    appearanceFolder
-      .addColor(debugParams, 'provinceColor')
-      .name('Province Color')
-      .onChange((value) => {
-        chinaMap.getProvinceRenderers().forEach((province) => {
-          province.setColor(value);
-        });
-      });
-
-    // 发光强度滑块
-    appearanceFolder
-      .add(debugParams, 'emissiveIntensity', 0, 1, 0.05)
-      .name('Emissive')
-      .onChange((value) => {
-        chinaMap.getProvinceRenderers().forEach((province) => {
-          province.setEmissiveIntensity(value);
-        });
-      });
-
-    // 悬停发光强度滑块
-    appearanceFolder
-      .add(debugParams, 'hoveredEmissiveIntensity', 0, 1, 0.05)
-      .name('Hovered Emissive')
-      .onChange((value) => {
-        provinceRenderers.forEach((province) => {
-          province.topMesh.material.emissiveIntensity = province.topMesh.userData.hovered
-            ? value
-            : province.topMesh.material.emissiveIntensity;
-        });
-      });
-
-    // 边框可见性开关
-    appearanceFolder
-      .add(debugParams, 'showEdges')
-      .name('Show Edges')
-      .onChange((value) => {
-        chinaMap.getProvinceRenderers().forEach((province) => {
-          province.setEdgesVisible(value);
-        });
-      });
-
-    // 边框透明度滑块
-    appearanceFolder
-      .add(debugParams, 'edgeOpacity', 0, 1, 0.05)
-      .name('Edge Opacity')
-      .onChange((value) => {
-        if (!debugParams.showEdges) return;
-        chinaMap.getProvinceRenderers().forEach((province) => {
-          if (!province.topMesh.userData.hovered) {
-            province.setEdgesVisible(debugParams.showEdges);
-          }
-        });
-      });
-
-    // 线框模式开关
-    appearanceFolder
-      .add(debugParams, 'wireframe')
-      .name('Wireframe')
-      .onChange((value) => {
-        chinaMap.getProvinceRenderers().forEach((province) => {
-          province.setWireframe(value);
-        });
-      });
-
-    // ========== 光照控制分组 ==========
-    const lightsFolder = gui.addFolder('Lights');
-
-    // 主光源强度滑块
-    lightsFolder
-      .add(debugParams, 'lightIntensity', 0, 2, 0.1)
-      .name('Main Light')
-      .onChange((value) => {
-        scene.children.forEach((child) => {
-          if (child instanceof THREE.DirectionalLight) {
-            child.intensity = value;
-          }
-        });
-      });
-
-    // ========== 辅助工具分组 ==========
-    const helpersFolder = gui.addFolder('Helpers');
-
-    // 坐标轴可见性开关
-    helpersFolder
-      .add(debugParams, 'showAxes')
-      .name('Show Axes')
-      .onChange((value) => {
-        if (axesHelper) {
-          axesHelper.visible = value;
-        }
-      });
-
-    // 关闭面板（默认折叠）
-    gui.close();
-  }
-
-  // =============================================
-  // 场景初始化
-  // =============================================
-
-  /**
-   * 初始化Three.js场景
-   *
-   * 初始化顺序：
-   * 1. 创建场景、相机、渲染器
-   * 2. 异步创建省份模型（完成后执行后续初始化）
-   * 3. 初始化控制器、光照、辅助工具
-   * 4. 初始化调试工具
-   * 5. 添加事件监听
-   * 6. 启动渲染循环
-   */
   function init() {
     const container = containerRef.value;
     const width = container.clientWidth;
     const height = container.clientHeight;
-    // 创建Three.js场景
     scene = new THREE.Scene();
-    scene.background = null; // 透明背景
+    scene.background = null;
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
 
-    // 创建正交相机
     const frustumSize = height;
     const aspect = width / height;
     camera = new THREE.OrthographicCamera(
@@ -353,191 +81,72 @@
       0.1,
       1000
     );
-    // 创建WebGL渲染器
+    camera.position.set(width / 2, -height * 0.57, 50);
+    camera.lookAt(width / 2, -height / 2, 0);
     renderer = new THREE.WebGLRenderer({
-      antialias: true, // 开启抗锯齿
-      alpha: true, // 允许透明
+      antialias: true,
+      alpha: true,
     });
-    renderer.setSize(width, height); // 设置渲染尺寸
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 设置像素比，限制最大为2防止性能问题
-    renderer.shadowMap.enabled = true; // 开启阴影映射
-    renderer.shadowMap.type = THREE.VSMShadowMap; // 使用VSM阴影映射算法
-    container.appendChild(renderer.domElement); // 将canvas添加到容器
-
-    // 异步创建省份模型，完成后继续初始化
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.VSMShadowMap;
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
+    container.appendChild(renderer.domElement);
+    if (DEBUG_MODE) {
+      debugTools = createDebugTools({
+        container,
+        camera,
+        renderer,
+        scene,
+        width,
+        height,
+        chinaMap,
+      });
+    }
     chinaMap = new ChinaMap();
-    chinaMap.load(scene, '/maps/processed_china1.json', { width, height }).then(() => {
-      // 初始化轨道控制器
-      controls = new OrbitControls(camera, renderer.domElement);
-      controls.enablePan = true; // 禁用平移
-      controls.enableZoom = true; // 允许缩放
-      controls.autoRotate = false; // 关闭自动旋转
-      controls.enableDamping = true; // 开启阻尼效果（惯性）
-      controls.dampingFactor = 0.05; // 阻尼系数
-
-      // 设置相机位置（地图在XY平面，相机从Z轴上方观察）
-      camera.position.set(0, 0, 50);
-      camera.lookAt(0, 0, 0);
-
-      // 创建环境光：白色，强度0.5
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-      scene.add(ambientLight);
-
-      // 创建坐标轴辅助线（红色=x轴，绿色=y轴，蓝色=z轴），放在西藏中心位置
-      axesHelper = new THREE.AxesHelper(50); // 增大尺寸到30
-      axesHelper.position.set(0, 0, 0);
-      scene.add(axesHelper);
-
-      // 创建网格辅助线
-      // 参数：10=网格大小，20=网格细分数，0x00d4ff=主网格颜色，0x1a3a5c=次网格颜色
-      // 初始化调试工具
-      initStats();
-      initGUI();
-
-      // 初始化射线投射器（用于鼠标拾取）
-      raycaster = new THREE.Raycaster();
-      mouse = new THREE.Vector2();
-
-      // 添加窗口大小改变事件监听
-      window.addEventListener('resize', onWindowResize);
-
-      // 添加鼠标移动事件监听（用于省份hover检测）
-      container.addEventListener('mousemove', onMouseMove);
-
-      // 启动渲染循环
+    chinaMap.load(scene, props.mapUrl, { width, height }).then(() => {
       animate();
-
-      // 隐藏加载遮罩
       loading.value = false;
     });
   }
 
-  // =============================================
-  // 渲染循环
-  // =============================================
-
-  /**
-   * 动画渲染循环
-   *
-   * 每帧执行：
-   * 1. 更新性能统计
-   * 2. 更新所有省份渲染器（处理颜色过渡动画等）
-   * 3. 更新控制器（应用阻尼等）
-   * 4. 渲染场景
-   */
   function animate() {
-    // 请求下一帧
     animationId = requestAnimationFrame(animate);
 
-    // 更新性能统计
-    if (stats) {
-      stats.update();
+    if (DEBUG_MODE && debugTools?.stats) {
+      debugTools.stats.update();
     }
 
-    // 确保场景、渲染器、相机都存在
     if (!scene || !renderer || !camera) return;
 
-    // 更新所有省份渲染器（处理动画）
     chinaMap.getProvinceRenderers().forEach((province) => {
       province.update();
     });
 
-    // 更新控制器（必须调用以应用阻尼等效果）
-    if (controls) {
-      controls.update();
+    if (DEBUG_MODE && debugTools?.controls) {
+      debugTools.controls.update();
     }
 
-    // 渲染场景到canvas
     renderer.render(scene, camera);
   }
 
-  // =============================================
-  // 窗口大小调整
-  // =============================================
-
-  /**
-   * 处理窗口大小改变事件（带防抖）
-   *
-   * 更新内容：
-   * 1. 相机的宽高比
-   * 2. 相机的投影矩阵（重新计算投影）
-   * 3. 渲染器的尺寸
-   */
-  let resizeTimeout = null;
-  function onWindowResize() {
-    // 清除之前的定时器
-    if (resizeTimeout) {
-      clearTimeout(resizeTimeout);
-    }
-
-    // 防抖延迟执行，避免窗口调整过程中频繁触发
-    resizeTimeout = setTimeout(() => {
-      const container = containerRef.value;
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-
-      const frustumSize = height;
-      const aspect = width / height;
-      camera.left = (-frustumSize * aspect) / 2;
-      camera.right = (frustumSize * aspect) / 2;
-      camera.top = frustumSize / 2;
-      camera.bottom = -frustumSize / 2;
-      camera.updateProjectionMatrix();
-
-      // 更新渲染器尺寸
-      renderer.setSize(width, height);
-    }, 2000); // 2s 延迟
-  }
-
-  // =============================================
-  // 资源清理
-  // =============================================
-
-  /**
-   * 组件卸载时清理所有资源
-   *
-   * 清理内容：
-   * 1. 取消动画帧
-   * 2. 移除事件监听
-   * 3. 销毁Stats和GUI面板
-   * 4. 销毁控制器
-   * 5. 销毁渲染器
-   * 6. 遍历销毁所有几何体和材质
-   * 7. 销毁所有省份渲染器
-   * 8. 销毁纹理
-   * 9. 终止Web Worker
-   * 10. 清空所有引用
-   */
   function dispose() {
-    // 取消动画帧
     if (animationId) {
       cancelAnimationFrame(animationId);
     }
 
-    // 移除事件监听
-    window.removeEventListener('resize', onWindowResize);
     containerRef.value?.removeEventListener('mousemove', onMouseMove);
 
-    // 销毁Stats面板
-    if (stats) {
-      if (containerRef.value?.contains(stats.dom)) {
-        containerRef.value.removeChild(stats.dom);
-      }
-      stats = null;
+    if (DEBUG_MODE && debugTools) {
+      disposeDebugTools({
+        ...debugTools,
+        container: containerRef.value,
+      });
+      debugTools = null;
     }
 
-    // 销毁GUI面板
-    if (gui) {
-      gui.destroy();
-      gui = null;
-    }
-
-    // 销毁控制器
-    if (controls) {
-      controls.dispose();
-    }
-
-    // 销毁渲染器
     if (renderer) {
       renderer.dispose();
       if (containerRef.value?.contains(renderer.domElement)) {
@@ -545,14 +154,12 @@
       }
     }
 
-    // 遍历场景，销毁所有几何体和材质
     if (scene) {
       scene.traverse((child) => {
         if (child.geometry) {
           child.geometry.dispose();
         }
         if (child.material) {
-          // 材质可能是数组，需要分别销毁
           if (Array.isArray(child.material)) {
             child.material.forEach((m) => m.dispose());
           } else {
@@ -562,100 +169,72 @@
       });
     }
 
-    // 销毁所有省份渲染器
     if (chinaMap) {
       chinaMap.dispose();
       chinaMap = null;
     }
 
-    // 清空所有核心对象引用
     scene = null;
     camera = null;
     renderer = null;
-    controls = null;
-    axesHelper = null;
   }
 
-  // =============================================
-  // 生命周期钩子
-  // =============================================
-
-  /**
-   * 组件挂载后初始化Three.js场景
-   *
-   * 使用requestAnimationFrame包装确保：
-   * 1. DOM已经完全渲染
-   * 2. 容器有正确的尺寸
-   * 3. 避免在挂载过程中进行渲染
-   */
   onMounted(() => {
     init();
   });
 
-  /**
-   * 组件卸载前清理所有资源
-   * 防止内存泄漏和WebGL上下文残留
-   */
   onUnmounted(() => {
     dispose();
   });
 </script>
 
-<style scoped>
-  /* 根容器：相对定位，作为加载遮罩的定位参考 */
+<style lang="scss" scoped>
   .china-map-3d-wrapper {
     position: relative;
     width: 100%;
     height: 100%;
+    .china-map-3d-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 10, 20, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      transition: opacity 0.3s ease;
+    }
+
+    .loading-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(59, 130, 246, 0.3);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .loading-text {
+      color: #3b82f6;
+      font-size: 14px;
+      font-weight: 500;
+    }
   }
 
-  /* Three.js渲染容器：占满父容器 */
-  .china-map-3d-container {
-    width: 100%;
-    height: 100%;
-  }
-
-  /* 加载遮罩层：绝对定位覆盖整个容器 */
-  .loading-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 10, 20, 0.8); /* 深蓝色半透明背景 */
-    display: flex;
-    align-items: center; /* 水平居中 */
-    justify-content: center; /* 垂直居中 */
-    z-index: 100; /* 置于最上层 */
-    transition: opacity 0.3s ease; /* 渐变消失效果 */
-  }
-
-  /* 加载内容：垂直排列 */
-  .loading-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-  }
-
-  /* 加载动画：蓝色旋转圆环 */
-  .loading-spinner {
-    width: 50px;
-    height: 50px;
-    border: 3px solid rgba(59, 130, 246, 0.3); /* 半透明蓝色边框 */
-    border-top-color: #3b82f6; /* 顶部为亮蓝色，形成旋转效果 */
-    border-radius: 50%; /* 圆形 */
-    animation: spin 1s linear infinite; /* 线性旋转动画 */
-  }
-
-  /* 加载文字样式 */
-  .loading-text {
-    color: #3b82f6;
-    font-size: 14px;
-    font-weight: 500;
-  }
-
-  /* 旋转动画关键帧 */
   @keyframes spin {
     to {
       transform: rotate(360deg);

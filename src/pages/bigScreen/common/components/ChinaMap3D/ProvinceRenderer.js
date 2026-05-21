@@ -36,7 +36,7 @@ export class ProvinceRenderer {
    * @param {string} precomputedData.name - 省份名称
    * @param {Array} precomputedData.polygons - 多边形数组
    */
-  constructor(precomputedData, wallHeight = 1, baseOffset = 0) {
+  constructor(precomputedData, wallHeight = 1) {
     this.provinceGroup = new THREE.Group();
     this.topMeshes = [];
     this.isHovered = false;
@@ -45,7 +45,6 @@ export class ProvinceRenderer {
     this.targetAnimationProgress = 0;
     this.animationSpeed = 0.15;
     this.wallHeight = wallHeight;
-    this.baseOffset = baseOffset;
     this.colors = {
       topNormal: new THREE.Color('#4f5fc2'),
       wallTopNormal: new THREE.Color('#ffffff'),
@@ -101,7 +100,6 @@ export class ProvinceRenderer {
       const firstPoint = points[0];
       shape.moveTo(firstPoint.x, firstPoint.y);
       for (let i = 1; i < points.length; i++) {
-        console.log('points', i, points[i]);
         shape.lineTo(points[i].x, points[i].y);
       }
       shape.closePath();
@@ -117,7 +115,6 @@ export class ProvinceRenderer {
     const mesh = new THREE.Mesh(geo, topMaterial);
     mesh.userData = { name: this.name, hovered: false, isWall: false };
     mesh.position.z = this.wallHeight;
-    mesh.position.y = this.baseOffset;
     this.provinceGroup.add(mesh);
     this.topMeshes.push(mesh);
   }
@@ -160,7 +157,6 @@ export class ProvinceRenderer {
 
     const wallMesh = new THREE.Mesh(wallGeo, [wallTopMaterial, wallSideMaterial]);
     wallMesh.userData = { name: this.name, hovered: false, isWall: true };
-    wallMesh.position.y = this.baseOffset;
     this.provinceGroup.add(wallMesh);
     this.topMeshes.push(wallMesh);
   }
