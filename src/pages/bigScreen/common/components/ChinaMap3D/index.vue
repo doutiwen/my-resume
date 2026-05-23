@@ -22,12 +22,18 @@
   const props = defineProps({
     mapUrl: {
       type: String,
-      default: '/maps/processed_china1.json',
+      default: '/maps/processed_yunnan.json',
+    },
+    center: {
+      type: Array,
+      default: () => [102, 25],
     },
   });
 
   const containerRef = shallowRef(null);
   const loading = ref(true);
+
+  const DEBUG_MODE = false;
 
   let scene = null;
   let camera = null;
@@ -37,7 +43,6 @@
   let raycaster = null;
   let mouse = null;
   let debugTools = null;
-  const DEBUG_MODE = false;
 
   function onMouseMove(event) {
     if (!containerRef.value) return;
@@ -66,34 +71,30 @@
     const container = containerRef.value;
     const width = container.clientWidth;
     const height = container.clientHeight;
-    scene = new THREE.Scene();
-    scene.background = null;
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
 
-    const frustumSize = height;
-    const aspect = width / height;
-    camera = new THREE.OrthographicCamera(
-      (-frustumSize * aspect) / 2,
-      (frustumSize * aspect) / 2,
-      frustumSize / 2,
-      -frustumSize / 2,
-      0.1,
-      1000
-    );
-    camera.position.set(width / 2, -height * 0.57, 50);
-    camera.lookAt(width / 2, -height / 2, 0);
     renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true,
     });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.VSMShadowMap;
+    container.appendChild(renderer.domElement);
+
+    scene = new THREE.Scene();
+    scene.background = null;
+
+    camera = new THREE.OrthographicCamera(0, width, 0, -height, 0.1, 1000);
+    camera.position.copy(new THREE.Vector3(0, 0, 50));
+    //camera.lookAt(0, 0.2, 0);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
     raycaster = new THREE.Raycaster();
     mouse = new THREE.Vector2();
-    container.appendChild(renderer.domElement);
+
     if (DEBUG_MODE) {
       debugTools = createDebugTools({
         container,
@@ -106,10 +107,10 @@
       });
     }
     chinaMap = new ChinaMap();
-    chinaMap.load(scene, props.mapUrl, { width, height }).then(() => {
-      animate();
+    chinaMap.load(scene, props.mapUrl, { width, height }, props.center).then(() => {
       loading.value = false;
     });
+    animate();
   }
 
   function animate() {
@@ -169,10 +170,8 @@
       });
     }
 
-    if (chinaMap) {
-      chinaMap.dispose();
-      chinaMap = null;
-    }
+    chinaMap.dispose();
+    chinaMap = null;
 
     scene = null;
     camera = null;

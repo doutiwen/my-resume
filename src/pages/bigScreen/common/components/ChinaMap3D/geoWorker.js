@@ -34,7 +34,6 @@ const MAX_CHILD_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 6);
 let featureCollection = null;
 let extent = null;
 let wallThickness = 0.01;
-let scale = null;
 let translate = null;
 let childWorkers = [];
 let taskQueue = [];
@@ -43,11 +42,26 @@ let totalFeatures = 0;
 let completedCount = 0;
 let processingStates = {};
 
-function initChildWorkers() {
+function initChildWorkers(center) {
   const features = featureCollection.features;
   totalFeatures = features.length;
 
-  for (let i = 0; i < MAX_CHILD_WORKERS; i++) {
+  const numChildWorkers = Math.min(totalFeatures, MAX_CHILD_WORKERS);
+
+  const chunkSize = Math.ceil(totalFeatures / numChildWorkers);
+  const workerFeatures = [];
+
+  for (let i = 0; i < numChildWorkers; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize, totalFeatures);
+    const workerFeatureIndices = [];
+    for (let j = start; j < end; j++) {
+      workerFeatureIndices.push(j);
+    }
+    workerFeatures.push(workerFeatureIndices);
+  }
+
+  for (let i = 0; i < numChildWorkers; i++) {
     const childWorker = new Worker(new URL('./geoChildWorker.js', import.meta.url), {
       type: 'module',
     });
@@ -59,7 +73,7 @@ function initChildWorkers() {
         readyChildCount++;
         if (readyChildCount === childWorkers.length) {
           initializeTaskQueue();
-          childWorkers.forEach((worker) => distributeNextTask(worker));
+          childWorkers.forEach((workerInfo) => distributeNextTask(workerInfo));
         }
       }
 
@@ -88,7 +102,8 @@ function initChildWorkers() {
         if (completedCount === totalFeatures) {
           finishWork();
         } else {
-          distributeNextTask(this);
+          const workerInfo = childWorkers.find((w) => w.worker === this);
+          if (workerInfo) distributeNextTask(workerInfo);
         }
       }
 
@@ -114,7 +129,8 @@ function initChildWorkers() {
         if (completedCount === totalFeatures) {
           finishWork();
         } else {
-          distributeNextTask(this);
+          const workerInfo = childWorkers.find((w) => w.worker === this);
+          if (workerInfo) distributeNextTask(workerInfo);
         }
       }
     };
@@ -123,18 +139,20 @@ function initChildWorkers() {
       console.error('Child worker error:', error);
     };
 
-    childWorkers.push(childWorker);
+    childWorkers.push({ worker: childWorker, features: workerFeatures[i] });
   }
 
-  for (const childWorker of childWorkers) {
-    childWorker.postMessage({
+  for (const { worker, features } of childWorkers) {
+    const assignedFeatures = features.map((index) => featureCollection.features[index]);
+    worker.postMessage({
       type: 'init',
       data: {
         wallThickness,
         extent,
-        featureCollection,
-        scale,
+        features: assignedFeatures,
+        featureIndices: features,
         translate,
+        center,
       },
     });
   }
@@ -142,16 +160,16 @@ function initChildWorkers() {
 
 function initializeTaskQueue() {
   const features = featureCollection.features;
-  taskQueue = features.map((_, index) => index);
-  features.forEach((feature, index) => {
+  features.forEach((_, index) => {
     processingStates[index] = 'pending';
   });
 }
 
-function distributeNextTask(worker) {
-  if (taskQueue.length === 0) return;
+function distributeNextTask(workerInfo) {
+  const { worker, features } = workerInfo;
+  if (features.length === 0) return;
 
-  const featureIndex = taskQueue.shift();
+  const featureIndex = features.shift();
   const feature = featureCollection.features[featureIndex];
   processingStates[featureIndex] = 'processing';
 
@@ -162,7 +180,7 @@ function distributeNextTask(worker) {
 }
 
 function finishWork() {
-  for (const worker of childWorkers) {
+  for (const { worker } of childWorkers) {
     worker.terminate();
   }
   childWorkers = [];
@@ -180,11 +198,12 @@ self.onmessage = function (e) {
     featureCollection = data.featureCollection;
     extent = data.extent;
     wallThickness = data.wallThickness !== undefined ? data.wallThickness : 0.01;
+    const center = data.center !== undefined ? data.center : [102, 25];
 
     const projectionResult = createProjection(featureCollection, extent);
-    scale = projectionResult.scale;
+    console.log('featureCollection', featureCollection);
     translate = projectionResult.translate;
 
-    initChildWorkers();
+    initChildWorkers(center);
   }
 };

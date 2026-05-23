@@ -51,13 +51,18 @@ function bufferPolygon(ringCoords) {
 
   try {
     const polygon = turf.polygon([ringCoords]);
-    const buffered = turf.buffer(polygon, -wallThickness, { units: 'degrees' });
+    const buffered = turf.buffer(polygon, -wallThickness, { units: 'degrees', steps: 8 });
 
     if (!buffered || !buffered.geometry || !buffered.geometry.coordinates) {
       return null;
     }
 
-    const innerRing = buffered.geometry.coordinates[0];
+    const simplified = turf.simplify(buffered, {
+      tolerance: 0.002,
+      highQuality: true,
+    });
+
+    const innerRing = simplified.geometry.coordinates[0];
     if (!innerRing || innerRing.length < 3) {
       return null;
     }
@@ -133,7 +138,9 @@ self.onmessage = function (e) {
 
   if (type === 'init') {
     try {
-      projection = createProjectionWithScaleTranslate(data.scale, data.translate);
+      console.log('Child worker initialization:', data);
+      const center = data.center !== undefined ? data.center : [102, 25];
+      projection = createProjectionWithScaleTranslate(data.translate, center);
       wallThickness = data.wallThickness !== undefined ? data.wallThickness : 0.01;
       self.postMessage({ type: 'ready' });
     } catch (error) {
@@ -143,6 +150,8 @@ self.onmessage = function (e) {
         data: { featureIndex: -1, error: error.message },
       });
     }
+  } else if (type === 'terminate') {
+    self.close();
   }
 
   if (type === 'process') {

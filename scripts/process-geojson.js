@@ -2,7 +2,7 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import gcoord from 'gcoord';
+import rewind from '@turf/rewind';
 
 const __dirname = path
   .dirname(new URL(import.meta.url).pathname)
@@ -10,18 +10,6 @@ const __dirname = path
 
 const sourceDir = path.join(__dirname, '../public/maps/source');
 const outputDir = path.join(__dirname, '../public/maps');
-
-function convertCoords(coords) {
-  if (Array.isArray(coords)) {
-    if (coords.length === 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-      const result = gcoord.transform([coords[0], coords[1]], gcoord.GCJ02, gcoord.WGS84);
-      return result;
-    } else {
-      return coords.map(convertCoords);
-    }
-  }
-  return coords;
-}
 
 function processGeoJSONFiles() {
   try {
@@ -67,7 +55,7 @@ function processGeoJSONFiles() {
 
         console.log('    执行简化处理...');
         const result = execSync(
-          `npx mapshaper "${inputPath}" -simplify 5% weighted keep-shapes -o "${outputPath}" format=geojson`,
+          `npx mapshaper "${inputPath}" -clean -simplify 5% weighted keep-shapes -o format=geojson precision=0.000001 "${outputPath}"`,
           { stdio: ['pipe', 'pipe', 'pipe'] }
         ).toString();
 
@@ -82,28 +70,17 @@ function processGeoJSONFiles() {
           throw new Error('未生成任何输出文件');
         }
 
-        console.log(`    执行坐标转换 (GCJ02 -> WGS84)...`);
-        generatedFiles.forEach((genFile) => {
-          const genFilePath = path.join(outputDir, genFile);
-          const geoJsonContent = fs.readFileSync(genFilePath, 'utf-8');
-          const geoJson = JSON.parse(geoJsonContent);
-
-          if (geoJson.features) {
-            geoJson.features.forEach((feature) => {
-              if (feature.geometry && feature.geometry.coordinates) {
-                feature.geometry.coordinates = convertCoords(feature.geometry.coordinates);
-              }
-            });
-          }
-
-          fs.writeFileSync(genFilePath, JSON.stringify(geoJson));
-        });
-
         const inputStats = fs.statSync(inputPath);
 
         let totalOutputSize = 0;
         generatedFiles.forEach((outFile) => {
           const outPath = path.join(outputDir, outFile);
+
+          console.log(`    使用 @turf/rewind 处理外环方向...`);
+          const geoJsonData = JSON.parse(fs.readFileSync(outPath, 'utf-8'));
+          const rewoundData = rewind(geoJsonData, { mutate: true, reverse: false });
+          fs.writeFileSync(outPath, JSON.stringify(rewoundData));
+
           const stats = fs.statSync(outPath);
           totalOutputSize += stats.size;
           console.log(`    生成: ${outFile} (${(stats.size / 1024).toFixed(1)} KB)`);

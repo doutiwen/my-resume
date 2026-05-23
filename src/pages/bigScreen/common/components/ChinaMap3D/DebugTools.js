@@ -32,7 +32,6 @@ export function createDebugTools({ container, camera, renderer, scene, width, he
   controls.autoRotate = false;
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
-  controls.target.set(width / 2, -height / 2, 0);
 
   stats = new Stats();
   stats.showPanel(0);

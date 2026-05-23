@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { ProvinceRenderer } from './ProvinceRenderer.js';
-import { createProjection } from './projection.js';
 
 export class ChinaMap {
   constructor() {
@@ -8,7 +7,7 @@ export class ChinaMap {
     this.worker = null;
   }
 
-  async load(scene, geoJsonUrl, extent, wallHeight = 1, wallThickness = 0.1) {
+  async load(scene, geoJsonUrl, extent, center = [102, 25], wallHeight = 1, wallThickness = 0.1) {
     const response = await fetch(geoJsonUrl);
     const provincesData = await response.json();
 
@@ -23,6 +22,7 @@ export class ChinaMap {
         const { type, data } = e.data;
 
         if (type === 'progress') {
+          console.log('progress', data);
           this.createProvinceMesh(scene, data.result, wallHeight);
         }
 
@@ -35,7 +35,12 @@ export class ChinaMap {
 
       this.worker.postMessage({
         type: 'init',
-        data: { featureCollection: provincesData, extent, wallThickness },
+        data: {
+          featureCollection: provincesData,
+          extent,
+          wallThickness,
+          center,
+        },
       });
     });
   }
