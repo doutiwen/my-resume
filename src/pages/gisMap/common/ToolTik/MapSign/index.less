@@ -1,0 +1,171 @@
+@import '@/theme/colors.less';
+
+.map-tag {
+    position: relative;
+    display: inline-flex;
+    cursor: pointer;
+    width: inherit;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    background-color: inherit;
+
+    .tool-name {
+        font-size: 14px;
+        margin-left: 6px;
+    }
+}
+
+.tag-container-wrap {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 200px;
+    background-color: white;
+    width: 320px;
+    z-index: 1;
+
+    .tag-title-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        height: 40px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #17181a;
+        border-bottom: 1px solid #e6e6e6;
+
+        .tag-close {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 40px;
+            height: 40px;
+            color: #409eff;
+            background-color: rgba(26, 102, 255, .1);
+        }
+    }
+
+    .marker-handle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 2px;
+        padding: 16px;
+        border-bottom: 1px solid #e6e6e6;
+    }
+
+    .marker-content-wrap {
+        width: 100%;
+        height: calc(100% - 40px - 66px);
+
+        .marker-list {
+            width: 100%;
+            padding: 16px;
+
+            .list-item {
+                width: 100%;
+                height: 48px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 16px;
+                border: 1px solid #e6e6e6;
+                border-top: 0;
+                color: #17181a;
+
+                &.is-header {
+                    height: 48px;
+                    background: #f5f7f9;
+                    color: #5e6166;
+                    border: 1px solid #e6e6e6;
+                    border-bottom: none;
+                }
+
+                .marker-label {
+                    display: flex;
+                    align-items: center;
+                    width: calc(100% - 42px);
+                    text-align: left;
+                    overflow: hidden;
+
+                    .marker-name {
+                        display: inline-block;
+                        width: calc(100% - 40px);
+                        overflow: hidden;
+                        white-space: nowrap;
+                        text-overflow: ellipsis;
+                    }
+                }
+
+                .marker-action {
+                    width: 74px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+            }
+        }
+    }
+}
+
+.point-edit-wrap {
+    width: 400px;
+    pointer-events: auto;
+    // background-color: white;
+    // border-radius: 4px;
+
+    .edit-title {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        height: 48px;
+        padding: 0 24px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #17181A;
+        border-bottom: 1px solid #E6E6E6;
+    }
+
+    .edit-from {
+        padding: 16px 24px 0 24px;
+
+        .sign-icon-wrap {
+            display: grid;
+            grid-template-columns: repeat(6, 43px);
+            grid-column-gap: 6px;
+            grid-row-gap: 6px;
+            align-items: flex-start;
+            margin-top: 8px;
+
+            .icon-item {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid #e6e6e6;
+                cursor: pointer;
+                width: 44px;
+                height: 32px;
+                &.is-active {
+                    border: 1px solid rgb(64, 158, 255);
+                }
+                img {
+                    height: 60%;
+                }
+            }
+        }
+    }
+
+    .edit-handle-wrap {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 12px 24px 24px 24px;
+    }
+}

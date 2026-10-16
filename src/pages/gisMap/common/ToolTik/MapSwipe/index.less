@@ -1,0 +1,203 @@
+.map-swipe-root-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 9;
+    width: 100%;
+    height: 100%;
+    background: white;
+}
+
+.swipe-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: white;
+
+    .swipe-title {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        height: 55px;
+        padding: 0 16px;
+        background: white;
+        border-bottom: 1px solid #e6e6e6;
+
+        .left-title {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+
+            .close-btn {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                cursor: pointer;
+
+                .close-icon {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 26px;
+                    height: 26px;
+                    margin-top: 1px;
+                    margin-right: 10px;
+                    color: #409eff;
+                    font-weight: bold;
+                    font-size: 16px;
+                    background: #f8f8f8;
+                }
+
+                .close-btn-text {
+                    color: #17181a;
+                    font-weight: 500;
+                    font-size: 16px;
+                }
+
+                &:hover {
+                    .close-btn-text {
+                        color: #409eff;
+                    }
+
+                    .close-icon {
+                        color: #ffffff;
+                        background: #409eff;
+                    }
+                }
+            }
+
+            .divider {
+                width: 1px;
+                height: 16px;
+                margin: 0 12px;
+                background: #dcdcdc;
+            }
+
+            .tip-wrap {
+                display: flex;
+                align-items: center;
+                color: #5e6166;
+                font-size: 14px;
+            }
+        }
+
+        .add-layer-btn {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+    }
+
+    .swipe-content {
+        position: relative;
+        display: flex;
+        justify-content: space-between;
+        height: calc(100% - 56px);
+        overflow: hidden;
+        background: white;
+    }
+
+    .left-swipe-wrap {
+        position: absolute;
+        top: 16px;
+        left: 24px;
+        z-index: 2;
+        display: flex;
+        width: 320px;
+        box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
+        transition: all 0.3s;
+
+        &.hidden-layer-content {
+            left: -320px;
+            box-shadow: unset;
+        }
+    }
+
+    .right-swipe-wrap {
+        position: absolute;
+        top: 16px;
+        right: 24px;
+        z-index: 2;
+        display: flex;
+        width: 320px;
+        box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
+        transition: all 0.3s;
+
+        &.hidden-layer-content {
+            right: -320px;
+            box-shadow: unset;
+        }
+    }
+
+    .layer-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 39px;
+        padding: 0 16px;
+        background: white;
+        border-bottom: 1px solid #e6e6e6;
+
+        .left-name {
+            display: flex;
+            align-items: center;
+            height: 39px;
+            color: #17181a;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .select-label {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            color: #8d9199;
+            font-size: 14px;
+
+            .colspan-btn {
+                display: flex;
+                align-items: center;
+                height: 100%;
+                margin-left: 8px;
+                cursor: pointer;
+            }
+        }
+    }
+
+    .layer-content {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.9);
+        .layer-list-wrap {
+            padding: 16px;
+        }
+    }
+}
+
+.swipe-layer-control-wrap {
+    position: relative;
+    width: 100%;
+
+    .expand-btn-wrap {
+        position: absolute;
+        top: 0;
+        right: -54px;
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background: white;
+        box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
+        cursor: pointer;
+        opacity: 1;
+
+        &.right-col-btn {
+            left: -54px;
+        }
+    }
+
+
+}

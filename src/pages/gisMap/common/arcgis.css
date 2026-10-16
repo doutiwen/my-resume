@@ -1,0 +1,7 @@
+@import '@arcgis/core/assets/esri/css/main.css';
+.esri-view .esri-view-surface[data-cursor=wait] {
+  cursor: wait;
+}
+.esri-ui-corner .esri-component {
+  box-shadow: none;
+}
