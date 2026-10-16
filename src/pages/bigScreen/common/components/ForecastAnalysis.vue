@@ -34,13 +34,20 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, onUnmounted } from 'vue';
+  import { ref, onMounted, onUnmounted, watch } from 'vue';
   import * as echarts from 'echarts';
+
+  const props = defineProps({
+    data: {
+      type: Array,
+      default: () => [],
+    },
+  });
 
   const chartRef = ref(null);
   let chartInstance = null;
 
-  const pieData = [
+  const defaultPieData = [
     { name: '监测一', value: 1684, color: '#3b82f6' },
     { name: '监测二', value: 1075, color: '#06b6d4' },
     { name: '监测三', value: 728, color: '#8b5cf6' },
@@ -48,8 +55,14 @@
     { name: '监测五', value: 950, color: '#ef4444' },
   ];
 
-  onMounted(() => {
+  const pieData = props.data.length > 0 ? props.data : defaultPieData;
+
+  const initChart = (chartData) => {
     if (!chartRef.value) return;
+
+    if (chartInstance) {
+      chartInstance.dispose();
+    }
 
     chartInstance = echarts.init(chartRef.value);
 
@@ -66,7 +79,7 @@
             borderWidth: 2,
           },
           label: { show: false },
-          data: pieData.map((d) => ({
+          data: chartData.map((d) => ({
             value: d.value,
             name: d.name,
             itemStyle: { color: d.color },
@@ -76,6 +89,10 @@
     };
 
     chartInstance.setOption(option);
+  };
+
+  onMounted(() => {
+    initChart(pieData);
 
     const handleResize = () => {
       chartInstance?.resize();
@@ -88,6 +105,16 @@
       chartInstance?.dispose();
     });
   });
+
+  watch(
+    () => props.data,
+    (newData) => {
+      if (newData && newData.length > 0) {
+        initChart(newData);
+      }
+    },
+    { deep: true }
+  );
 </script>
 
 <style lang="scss" scoped>

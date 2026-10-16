@@ -17,7 +17,7 @@
             <span class="panel-subtitle">Water conservancy guarantee</span>
           </div>
           <div class="chart-height">
-            <WaterConservancyChart />
+            <WaterConservancyChart :data="waterConservancyData" />
           </div>
         </div>
 
@@ -27,7 +27,7 @@
             <h2 class="panel-title">监测站点排行</h2>
             <span class="panel-subtitle">Monitoring site ranking</span>
           </div>
-          <MonitoringRank />
+          <MonitoringRank :data="monitoringRankData" />
         </div>
 
         <div class="panel-card animate-panel" style="animation-delay: 0.3s">
@@ -47,13 +47,13 @@
             </div>
           </div>
           <div class="chart-height">
-            <StationStats />
+            <StationStats :data="stationStatsData" />
           </div>
         </div>
       </div>
 
       <div class="panel-center">
-        <ChinaMap3D />
+        <ChinaMap3D @click="handleProvinceClick" />
       </div>
 
       <div class="panel-right">
@@ -63,7 +63,7 @@
             <h2 class="panel-title">气象监测统计</h2>
             <span class="panel-subtitle">Meteorological monitoring statistics</span>
           </div>
-          <MeteoMonitoring />
+          <MeteoMonitoring :data="meteoMonitoringData" />
         </div>
 
         <div class="panel-card animate-panel" style="animation-delay: 0.2s">
@@ -73,7 +73,7 @@
             <span class="panel-subtitle">Forecast analysis</span>
           </div>
           <div class="chart-height">
-            <ForecastAnalysis />
+            <ForecastAnalysis :data="forecastAnalysisData" />
           </div>
         </div>
 
@@ -84,7 +84,7 @@
             <span class="panel-subtitle">Future monitoring and analysis</span>
           </div>
           <div class="chart-height">
-            <FutureMonitoring />
+            <FutureMonitoring :data="futureMonitoringData" />
           </div>
         </div>
       </div>
@@ -102,7 +102,7 @@
 </template>
 
 <script setup>
-  import { ref } from 'vue';
+  import { ref, onMounted } from 'vue';
   import WaterConservancyChart from './common/components/WaterConservancyChart.vue';
   import MonitoringRank from './common/components/MonitoringRank.vue';
   import StationStats from './common/components/StationStats.vue';
@@ -110,8 +110,68 @@
   import ForecastAnalysis from './common/components/ForecastAnalysis.vue';
   import FutureMonitoring from './common/components/FutureMonitoring.vue';
   import ChinaMap3D from './common/components/ChinaMap3D';
+  import { mockApi } from '@/utils/mockApi';
 
   const activeTab = ref('meteo');
+
+  const waterConservancyData = ref([]);
+  const monitoringRankData = ref([]);
+  const stationStatsData = ref([]);
+  const meteoMonitoringData = ref(null);
+  const forecastAnalysisData = ref([]);
+  const futureMonitoringData = ref(null);
+
+  const fetchData = async () => {
+    try {
+      const [waterData, rankData, stationData, meteoData, forecastData, futureData] =
+        await Promise.all([
+          mockApi.fetchWaterConservancyData(),
+          mockApi.fetchMonitoringRankData(),
+          mockApi.fetchStationStatsData(),
+          mockApi.fetchMeteoMonitoringData(),
+          mockApi.fetchForecastAnalysisData(),
+          mockApi.fetchFutureMonitoringData(),
+        ]);
+
+      waterConservancyData.value = waterData;
+      monitoringRankData.value = rankData;
+      stationStatsData.value = stationData;
+      meteoMonitoringData.value = meteoData;
+      forecastAnalysisData.value = forecastData;
+      futureMonitoringData.value = futureData;
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+    }
+  };
+
+  const handleProvinceClick = async (event) => {
+    console.log('点击了省份:', event.name);
+
+    try {
+      const [waterData, rankData, stationData, meteoData, forecastData, futureData] =
+        await Promise.all([
+          mockApi.fetchWaterConservancyData(),
+          mockApi.fetchMonitoringRankData(),
+          mockApi.fetchStationStatsData(),
+          mockApi.fetchMeteoMonitoringData(),
+          mockApi.fetchForecastAnalysisData(),
+          mockApi.fetchFutureMonitoringData(),
+        ]);
+
+      waterConservancyData.value = waterData;
+      monitoringRankData.value = rankData;
+      stationStatsData.value = stationData;
+      meteoMonitoringData.value = meteoData;
+      forecastAnalysisData.value = forecastData;
+      futureMonitoringData.value = futureData;
+    } catch (error) {
+      console.error('Failed to fetch province data:', error);
+    }
+  };
+
+  onMounted(() => {
+    fetchData();
+  });
 </script>
 
 <style lang="scss" scoped>

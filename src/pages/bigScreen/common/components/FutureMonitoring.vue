@@ -3,18 +3,33 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, onUnmounted } from 'vue';
+  import { ref, onMounted, onUnmounted, watch } from 'vue';
   import * as echarts from 'echarts';
+
+  const props = defineProps({
+    data: {
+      type: Object,
+      default: () => null,
+    },
+  });
 
   const chartRef = ref(null);
   let chartInstance = null;
 
-  const timeData = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'];
-  const valueData1 = [78.6, 41.6, 57.2, 35.0, 31.8, 40.5, 54.7];
-  const valueData2 = [65, 38, 52, 42, 35, 45, 58];
+  const defaultData = {
+    timeData: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+    valueData1: [78.6, 41.6, 57.2, 35.0, 31.8, 40.5, 54.7],
+    valueData2: [65, 38, 52, 42, 35, 45, 58],
+  };
 
-  onMounted(() => {
+  const chartData = props.data || defaultData;
+
+  const initChart = (data) => {
     if (!chartRef.value) return;
+
+    if (chartInstance) {
+      chartInstance.dispose();
+    }
 
     chartInstance = echarts.init(chartRef.value);
 
@@ -39,7 +54,7 @@
       },
       xAxis: {
         type: 'category',
-        data: timeData,
+        data: data.timeData,
         axisLine: {
           lineStyle: { color: 'rgba(148, 163, 184, 0.3)' },
         },
@@ -76,7 +91,7 @@
           name: '指标一',
           type: 'bar',
           barWidth: 8,
-          data: valueData1,
+          data: data.valueData1,
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
               { offset: 0, color: '#3b82f6' },
@@ -89,7 +104,7 @@
           name: '指标二',
           type: 'line',
           smooth: true,
-          data: valueData2,
+          data: data.valueData2,
           lineStyle: {
             color: '#f59e0b',
             width: 2,
@@ -104,6 +119,10 @@
     };
 
     chartInstance.setOption(option);
+  };
+
+  onMounted(() => {
+    initChart(chartData);
 
     const handleResize = () => {
       chartInstance?.resize();
@@ -116,6 +135,16 @@
       chartInstance?.dispose();
     });
   });
+
+  watch(
+    () => props.data,
+    (newData) => {
+      if (newData) {
+        initChart(newData);
+      }
+    },
+    { deep: true }
+  );
 </script>
 
 <style lang="scss" scoped>

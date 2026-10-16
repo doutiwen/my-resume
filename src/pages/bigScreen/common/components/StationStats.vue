@@ -14,21 +14,34 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, onUnmounted } from 'vue';
+  import { ref, onMounted, onUnmounted, watch } from 'vue';
   import * as echarts from 'echarts';
+
+  const props = defineProps({
+    data: {
+      type: Array,
+      default: () => [],
+    },
+  });
 
   const chartRef = ref(null);
   let chartInstance = null;
 
-  const regionData = [
+  const defaultRegionData = [
     { name: '区域一', value: 21, color: '#3b82f6' },
     { name: '区域二', value: 28, color: '#06b6d4' },
     { name: '区域三', value: 32, color: '#8b5cf6' },
     { name: '区域四', value: 19, color: '#f59e0b' },
   ];
 
-  onMounted(() => {
+  const regionData = props.data.length > 0 ? props.data : defaultRegionData;
+
+  const initChart = (chartData) => {
     if (!chartRef.value) return;
+
+    if (chartInstance) {
+      chartInstance.dispose();
+    }
 
     chartInstance = echarts.init(chartRef.value);
 
@@ -53,7 +66,7 @@
               color: '#22d3ee',
             },
           },
-          data: regionData.map((d) => ({
+          data: chartData.map((d) => ({
             value: d.value,
             name: d.name,
             itemStyle: { color: d.color },
@@ -63,6 +76,10 @@
     };
 
     chartInstance.setOption(option);
+  };
+
+  onMounted(() => {
+    initChart(regionData);
 
     const handleResize = () => {
       chartInstance?.resize();
@@ -75,6 +92,16 @@
       chartInstance?.dispose();
     });
   });
+
+  watch(
+    () => props.data,
+    (newData) => {
+      if (newData && newData.length > 0) {
+        initChart(newData);
+      }
+    },
+    { deep: true }
+  );
 </script>
 
 <style lang="scss" scoped>

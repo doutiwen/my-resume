@@ -3,22 +3,20 @@
     <div class="station-info">
       <div class="station-header">
         <div class="station-badge">
-          <span class="badge-text">市</span>
+          <span class="badge-text">{{ stationData.stationType }}</span>
         </div>
-        <span class="station-name">市气象部监测站</span>
+        <span class="station-name">{{ stationData.stationName }}</span>
       </div>
-      <p class="station-desc">
-        气象环境监测站在农业环境监测中发挥着非常重要的作用，促进了智能农业的发展。
-      </p>
+      <p class="station-desc">{{ stationData.stationDesc }}</p>
     </div>
 
     <div class="progress-section">
       <div class="progress-header">
         <span class="progress-label">配置设施占比</span>
-        <span class="progress-label">已覆盖 28/100</span>
+        <span class="progress-label">已覆盖 {{ stationData.progress }}/{{ stationData.totalFacilities }}</span>
       </div>
       <div class="progress-bar">
-        <div class="progress-fill" style="width: 28%"></div>
+        <div class="progress-fill" :style="{ width: stationData.progress + '%' }"></div>
       </div>
     </div>
 
@@ -36,7 +34,7 @@
         </div>
         <div class="stat-label">水流速监测</div>
         <div class="stat-value">
-          2,674
+          {{ formatNumber(stationData.flowRateCount) }}
           <span class="stat-unit">个</span>
         </div>
       </div>
@@ -54,13 +52,38 @@
         </div>
         <div class="stat-label">水量监测</div>
         <div class="stat-value">
-          1,668
+          {{ formatNumber(stationData.waterVolumeCount) }}
           <span class="stat-unit">个</span>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<script setup>
+  const props = defineProps({
+    data: {
+      type: Object,
+      default: () => null,
+    },
+  });
+
+  const defaultData = {
+    stationName: '市气象部监测站',
+    stationType: '市',
+    stationDesc: '气象环境监测站在农业环境监测中发挥着非常重要的作用，促进了智能农业的发展。',
+    progress: 28,
+    totalFacilities: 100,
+    flowRateCount: 2674,
+    waterVolumeCount: 1668,
+  };
+
+  const stationData = props.data || defaultData;
+
+  const formatNumber = (num) => {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+</script>
 
 <style lang="scss" scoped>
   @keyframes statAnim {

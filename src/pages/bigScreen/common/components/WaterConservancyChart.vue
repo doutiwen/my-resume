@@ -3,13 +3,20 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, onUnmounted } from 'vue';
+  import { ref, onMounted, onUnmounted, watch } from 'vue';
   import * as echarts from 'echarts';
+
+  const props = defineProps({
+    data: {
+      type: Array,
+      default: () => [],
+    },
+  });
 
   const chartRef = ref(null);
   let chartInstance = null;
 
-  const data = [
+  const defaultData = [
     { name: '类型一', value: 761 },
     { name: '类型二', value: 608 },
     { name: '类型三', value: 972 },
@@ -17,8 +24,12 @@
     { name: '类型五', value: 332 },
   ];
 
-  onMounted(() => {
+  const initChart = (chartData) => {
     if (!chartRef.value) return;
+
+    if (chartInstance) {
+      chartInstance.dispose();
+    }
 
     chartInstance = echarts.init(chartRef.value);
 
@@ -32,7 +43,7 @@
       },
       xAxis: {
         type: 'category',
-        data: data.map((d) => d.name),
+        data: chartData.map((d) => d.name),
         axisLine: {
           lineStyle: { color: 'rgba(148, 163, 184, 0.3)' },
         },
@@ -70,7 +81,7 @@
           symbol: 'path://M0,100 L50,100 L50,0 L0,0 Z',
           symbolSize: ['60%', '100%'],
           symbolOffset: [0, 0],
-          data: data.map((d, i) => ({
+          data: chartData.map((d, i) => ({
             value: d.value,
             itemStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -99,6 +110,11 @@
     };
 
     chartInstance.setOption(option);
+  };
+
+  onMounted(() => {
+    const chartData = props.data.length > 0 ? props.data : defaultData;
+    initChart(chartData);
 
     const handleResize = () => {
       chartInstance?.resize();
@@ -111,6 +127,16 @@
       chartInstance?.dispose();
     });
   });
+
+  watch(
+    () => props.data,
+    (newData) => {
+      if (newData && newData.length > 0) {
+        initChart(newData);
+      }
+    },
+    { deep: true }
+  );
 </script>
 
 <style lang="scss" scoped>

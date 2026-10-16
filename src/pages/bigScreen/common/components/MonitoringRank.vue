@@ -23,11 +23,20 @@
 </template>
 
 <script setup>
-  const rankData = [
+  const props = defineProps({
+    data: {
+      type: Array,
+      default: () => [],
+    },
+  });
+
+  const defaultRankData = [
     { rank: 1, name: '华北大区A分区', config: '184,620', total: '6,843' },
     { rank: 2, name: '华东大区山东C区', config: '359,271', total: '10,957' },
     { rank: 3, name: '华北大区', config: '628,600', total: '270,983' },
   ];
+
+  const rankData = props.data.length > 0 ? props.data : defaultRankData;
 </script>
 
 <style lang="scss" scoped>
