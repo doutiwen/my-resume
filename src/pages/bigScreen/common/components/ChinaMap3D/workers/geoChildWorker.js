@@ -9,7 +9,7 @@
  * 此文件由主Worker通过URL创建，负责实际的地理数据处理逻辑
  */
 
-import { createProjectionWithScaleTranslate } from './projection.js';
+import { createProjectionWithScaleTranslate } from '../utils/projection.js';
 import * as turf from '@turf/turf';
 
 let projection = null;

@@ -32,6 +32,7 @@ export function createDebugTools({ container, camera, renderer, scene, width, he
   controls.autoRotate = false;
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
+  controls.target.set(width / 2, -height / 2, 0);
 
   stats = new Stats();
   stats.showPanel(0);
@@ -59,36 +60,36 @@ export function createDebugTools({ container, camera, renderer, scene, width, he
   const appearanceFolder = gui.addFolder('Appearance');
   appearanceFolder
     .addColor(debugParams, 'provinceColor')
-    .name('Province Color')
+    .name('Region Color')
     .onChange((value) => {
-      chinaMap.getProvinceRenderers().forEach((province) => {
-        province.setColor(value);
+      chinaMap.getRegionRenderers().forEach((region) => {
+        region.setColor(value);
       });
     });
   appearanceFolder
     .add(debugParams, 'emissiveIntensity', 0, 1, 0.05)
     .name('Emissive')
     .onChange((value) => {
-      chinaMap.getProvinceRenderers().forEach((province) => {
-        province.setEmissiveIntensity(value);
+      chinaMap.getRegionRenderers().forEach((region) => {
+        region.setEmissiveIntensity(value);
       });
     });
   appearanceFolder
     .add(debugParams, 'hoveredEmissiveIntensity', 0, 1, 0.05)
     .name('Hovered Emissive')
     .onChange((value) => {
-      provinceRenderers.forEach((province) => {
-        province.topMesh.material.emissiveIntensity = province.topMesh.userData.hovered
+      regionRenderers.forEach((region) => {
+        region.topMesh.material.emissiveIntensity = region.topMesh.userData.hovered
           ? value
-          : province.topMesh.material.emissiveIntensity;
+          : region.topMesh.material.emissiveIntensity;
       });
     });
   appearanceFolder
     .add(debugParams, 'showEdges')
     .name('Show Edges')
     .onChange((value) => {
-      chinaMap.getProvinceRenderers().forEach((province) => {
-        province.setEdgesVisible(value);
+      chinaMap.getRegionRenderers().forEach((region) => {
+        region.setEdgesVisible(value);
       });
     });
   appearanceFolder
@@ -96,9 +97,9 @@ export function createDebugTools({ container, camera, renderer, scene, width, he
     .name('Edge Opacity')
     .onChange((value) => {
       if (!debugParams.showEdges) return;
-      chinaMap.getProvinceRenderers().forEach((province) => {
-        if (!province.topMesh.userData.hovered) {
-          province.setEdgesVisible(debugParams.showEdges);
+      chinaMap.getRegionRenderers().forEach((region) => {
+        if (!region.topMesh.userData.hovered) {
+          region.setEdgesVisible(debugParams.showEdges);
         }
       });
     });
@@ -106,8 +107,8 @@ export function createDebugTools({ container, camera, renderer, scene, width, he
     .add(debugParams, 'wireframe')
     .name('Wireframe')
     .onChange((value) => {
-      chinaMap.getProvinceRenderers().forEach((province) => {
-        province.setWireframe(value);
+      chinaMap.getRegionRenderers().forEach((region) => {
+        region.setWireframe(value);
       });
     });
 

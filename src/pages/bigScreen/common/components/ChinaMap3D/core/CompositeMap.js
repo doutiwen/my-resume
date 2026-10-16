@@ -1,29 +1,28 @@
 import * as THREE from 'three';
-import { ProvinceRenderer } from './ProvinceRenderer.js';
+import { RegionRenderer } from './RegionRenderer.js';
+import GeoWorker from '../workers/geoWorker.js?worker';
 
-export class ChinaMap {
+export class CompositeMap {
   constructor() {
-    this.provinceRenderers = [];
+    this.regionRenderers = [];
     this.worker = null;
   }
 
   async load(scene, geoJsonUrl, extent, center = [102, 25], wallHeight = 1, wallThickness = 0.1) {
     const response = await fetch(geoJsonUrl);
-    const provincesData = await response.json();
+    const regionsData = await response.json();
 
     this.extent = extent;
 
     return new Promise((resolve) => {
-      this.worker = new Worker(new URL('./geoWorker.js', import.meta.url), {
-        type: 'module',
-      });
+      this.worker = new GeoWorker();
 
       this.worker.onmessage = (e) => {
         const { type, data } = e.data;
 
         if (type === 'progress') {
           console.log('progress', data);
-          this.createProvinceMesh(scene, data.result, wallHeight);
+          this.createRegionMesh(scene, data.result, wallHeight);
         }
 
         if (type === 'complete') {
@@ -36,7 +35,7 @@ export class ChinaMap {
       this.worker.postMessage({
         type: 'init',
         data: {
-          featureCollection: provincesData,
+          featureCollection: regionsData,
           extent,
           wallThickness,
           center,
@@ -45,28 +44,28 @@ export class ChinaMap {
     });
   }
 
-  createProvinceMesh(scene, data, wallHeight) {
+  createRegionMesh(scene, data, wallHeight) {
     if (!data || !data.polygons || data.polygons.length === 0) {
       return;
     }
 
     try {
-      const renderer = new ProvinceRenderer(data, wallHeight);
-      renderer.provinceGroup.userData = { name: data.name };
-      scene.add(renderer.provinceGroup);
-      this.provinceRenderers.push(renderer);
+      const renderer = new RegionRenderer(data, wallHeight);
+      renderer.regionGroup.userData = { name: data.name };
+      scene.add(renderer.regionGroup);
+      this.regionRenderers.push(renderer);
     } catch (error) {
       console.error(`Failed to create renderer for ${data.name}:`, error);
     }
   }
 
-  getProvinceRenderers() {
-    return this.provinceRenderers;
+  getRegionRenderers() {
+    return this.regionRenderers;
   }
 
   dispose() {
-    this.provinceRenderers.forEach((r) => r.dispose());
-    this.provinceRenderers = [];
+    this.regionRenderers.forEach((r) => r.dispose());
+    this.regionRenderers = [];
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;

@@ -27,7 +27,7 @@
  * - 记录每个省份的处理状态，便于追踪和调试
  */
 
-import { createProjection } from './projection.js';
+import { createProjection } from '../utils/projection.js';
 
 const MAX_CHILD_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 6);
 
